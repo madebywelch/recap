@@ -10,6 +10,68 @@ import (
 	"time"
 )
 
+// Pair is one real user message plus the assistant text that answered it.
+type Pair struct {
+	Tool      string    `json:"tool"`
+	Session   string    `json:"session"`
+	Cwd       string    `json:"cwd,omitempty"`
+	Ts        time.Time `json:"ts"`
+	User      string    `json:"user"`
+	Assistant string    `json:"assistant_excerpt"`
+	Score     int       `json:"score"`
+	Signals   []string  `json:"signals,omitempty"`
+}
+
+// pairer turns an ordered stream of user and assistant texts into Pairs.
+//
+// A pair is one real user message plus every assistant text block emitted
+// before the next real user message. Both CLIs write one record per content
+// block, so a single assistant turn arrives as thinking, text, tool_use and
+// tool_result records interleaved. Anything that is not a real user message
+// or assistant text is not an event: it neither starts a pair nor ends one.
+type pairer struct {
+	tool    string
+	session string
+	cwd     string
+
+	pairs     []Pair
+	user      string
+	ts        time.Time
+	assistant []string
+}
+
+func (p *pairer) startUser(text string, ts time.Time) {
+	p.flush()
+	p.user, p.ts, p.assistant = text, ts, nil
+}
+
+func (p *pairer) addAssistant(text string) {
+	if p.user == "" || text == "" {
+		return
+	}
+	p.assistant = append(p.assistant, text)
+}
+
+func (p *pairer) flush() {
+	if p.user != "" && len(p.assistant) > 0 {
+		p.pairs = append(p.pairs, Pair{
+			Tool:      p.tool,
+			Session:   p.session,
+			Cwd:       p.cwd,
+			Ts:        p.ts,
+			User:      redact(p.user),
+			Assistant: redact(strings.Join(p.assistant, "\n\n")),
+		})
+	}
+	p.user, p.assistant = "", nil
+}
+
+func newScanner(f *os.File) *bufio.Scanner {
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	return sc
+}
+
 // --- Claude ---------------------------------------------------------------
 
 type claudeRecord struct {
@@ -40,21 +102,15 @@ func parseClaudeFile(path string) ([]Pair, error) {
 	}
 	defer f.Close()
 
-	var pairs []Pair
-	var pendingUser string
-	var pendingTs time.Time
-	var sessionCwd string
-	sessionID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
-
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	pr := &pairer{tool: "claude", session: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
+	sc := newScanner(f)
 	for sc.Scan() {
 		var rec claudeRecord
 		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
 			continue
 		}
-		if sessionCwd == "" && rec.Cwd != "" {
-			sessionCwd = rec.Cwd
+		if pr.cwd == "" && rec.Cwd != "" {
+			pr.cwd = rec.Cwd
 		}
 		if rec.IsSidechain || rec.IsMeta {
 			continue
@@ -73,33 +129,15 @@ func parseClaudeFile(path string) ([]Pair, error) {
 			if rec.UserType != "" && rec.UserType != "external" {
 				continue
 			}
-			text := extractClaudeUserText(msg.Content)
-			if text == "" {
-				pendingUser = ""
-				continue
+			if text := extractClaudeUserText(msg.Content); text != "" {
+				pr.startUser(text, ts)
 			}
-			pendingUser = text
-			pendingTs = ts
 		case "assistant":
-			if pendingUser == "" {
-				continue
-			}
-			text := extractClaudeAssistantText(msg.Content)
-			if text == "" {
-				continue
-			}
-			pairs = append(pairs, Pair{
-				Tool:      "claude",
-				Session:   sessionID,
-				Cwd:       sessionCwd,
-				Ts:        pendingTs,
-				User:      pendingUser,
-				Assistant: text,
-			})
-			pendingUser = ""
+			pr.addAssistant(extractClaudeAssistantText(msg.Content))
 		}
 	}
-	return pairs, sc.Err()
+	pr.flush()
+	return pr.pairs, sc.Err()
 }
 
 func extractClaudeUserText(content json.RawMessage) string {
@@ -150,27 +188,40 @@ func extractClaudeAssistantText(content json.RawMessage) string {
 	return strings.Join(parts, "\n")
 }
 
-// cleanUserText filters obvious system-injected wrappers; returns "" to drop.
+// injectedPrefixes mark user-role records that the CLI or a harness wrote,
+// not the human. Matched after whitespace trimming.
+var injectedPrefixes = []string{
+	// Claude Code
+	"<system_instruction>",
+	"<system-reminder>",
+	"<command-name>",
+	"<local-command-stdout>",
+	"<bash-stdout>",
+	"<bash-stderr>",
+	"<bash-input>",
+	"<task-notification>",
+	"<user-prompt-submit-hook>",
+	"[Request interrupted",
+	"This session is being continued from a previous conversation",
+	"Caveat: The messages below were generated",
+	// Codex
+	"<environment_context>",
+	"<user_instructions>",
+	"<permissions instructions>",
+	"<turn_aborted>",
+	"<recommended_plugins>",
+	"<external_codex_apps_open_page>",
+	"<send_user_message_question_reply>",
+	"# AGENTS.md instructions",
+}
+
+// cleanUserText filters system-injected wrappers; returns "" to drop.
 func cleanUserText(s string) string {
 	t := strings.TrimSpace(s)
 	if len(t) < 3 {
 		return ""
 	}
-	prefixes := []string{
-		"<system_instruction>",
-		"<system-reminder>",
-		"<command-name>",
-		"<local-command-stdout>",
-		"<bash-stdout>",
-		"<bash-stderr>",
-		"<bash-input>",
-		"<task-notification>",
-		"<environment_context>",
-		"<user-prompt-submit-hook>",
-		"This session is being continued from a previous conversation",
-		"Caveat: The messages below were generated",
-	}
-	for _, p := range prefixes {
+	for _, p := range injectedPrefixes {
 		if strings.HasPrefix(t, p) {
 			return ""
 		}
@@ -203,14 +254,8 @@ func parseCodexFile(path string) ([]Pair, error) {
 	}
 	defer f.Close()
 
-	var pairs []Pair
-	var pendingUser string
-	var pendingTs time.Time
-	var sessionCwd string
-	sessionID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
-
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+	pr := &pairer{tool: "codex", session: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
+	sc := newScanner(f)
 	for sc.Scan() {
 		var rec codexRecord
 		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
@@ -221,7 +266,7 @@ func parseCodexFile(path string) ([]Pair, error) {
 		case "session_meta":
 			var m codexSessionMeta
 			if err := json.Unmarshal(rec.Payload, &m); err == nil {
-				sessionCwd = m.Cwd
+				pr.cwd = m.Cwd
 			}
 		case "response_item":
 			var p codexMessagePayload
@@ -234,33 +279,16 @@ func parseCodexFile(path string) ([]Pair, error) {
 			text := codexBlockText(p.Content)
 			switch p.Role {
 			case "user":
-				cleaned := cleanUserText(text)
-				if cleaned == "" {
-					pendingUser = ""
-					continue
+				if cleaned := cleanUserText(text); cleaned != "" {
+					pr.startUser(cleaned, ts)
 				}
-				pendingUser = cleaned
-				pendingTs = ts
 			case "assistant":
-				if pendingUser == "" {
-					continue
-				}
-				if text == "" {
-					continue
-				}
-				pairs = append(pairs, Pair{
-					Tool:      "codex",
-					Session:   sessionID,
-					Cwd:       sessionCwd,
-					Ts:        pendingTs,
-					User:      pendingUser,
-					Assistant: text,
-				})
-				pendingUser = ""
+				pr.addAssistant(text)
 			}
 		}
 	}
-	return pairs, sc.Err()
+	pr.flush()
+	return pr.pairs, sc.Err()
 }
 
 func codexBlockText(blocks []claudeBlock) string {
