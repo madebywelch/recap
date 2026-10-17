@@ -1,6 +1,6 @@
 package main
 
-const systemPrompt = `You are generating a daily knowledge-point recap from a developer's prior coding-agent sessions. Below (after this instruction block) is a JSON array of (user_message, assistant_response) pairs that have been pre-filtered for moments of confusion or unfamiliar territory — questions, "wait/what/why" reactions, requests for clarification.
+const systemPrompt = `You are generating a daily knowledge-point recap from a developer's prior coding-agent sessions. Below (after this instruction block) is a JSON array of (user_message, assistant_response) pairs that have been pre-filtered for moments of confusion or unfamiliar territory — questions, "wait/what/why" reactions, requests for clarification, pasted errors. Each candidate carries a heuristic score and the named signals behind it; treat them as a prior on relevance, not a verdict.
 
 Pick the 4–6 highest-leverage knowledge points: concepts, tools, technologies, or mechanics that the developer encountered but doesn't fully understand, and where a brief explainer would actually teach them something durable.
 
