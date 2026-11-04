@@ -37,11 +37,15 @@ const SCAN_ARGS: [&str; 7] = [
 /// `inference_cli` is "auto" | "claude" | "codex" | "custom"; when it is
 /// "custom", `custom_cli_path` holds the executable passed through to the
 /// engine as `--inference` (the engine runs it claude-style, `-p`).
+/// `onboarded` is the first-run flag: the welcome sheet shows until the
+/// user dismisses it, and then never again.
 #[derive(Serialize, Deserialize)]
 struct Settings {
     inference_cli: String,
     custom_cli_path: String,
     timeout_sec: u32,
+    #[serde(default)]
+    onboarded: bool,
 }
 
 impl Default for Settings {
@@ -50,6 +54,7 @@ impl Default for Settings {
             inference_cli: "auto".into(),
             custom_cli_path: String::new(),
             timeout_sec: 240,
+            onboarded: false,
         }
     }
 }
@@ -122,14 +127,52 @@ fn set_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), String>
 /// environment it spawns the sidecar with: the spec's common install
 /// locations go in front, the inherited PATH behind. Npm-global discovery
 /// beyond these lands with future Settings work.
+/// The common install locations a GUI launch misses (the spec's PATH
+/// augmentation, hardened for a clean machine with no shell PATH): the
+/// user's own bin dirs plus the node/npm version managers the CLIs are
+/// typically installed through. Only directories that exist are
+/// prepended, so a clean machine gets a short, honest PATH.
 fn augmented_path(home: &std::path::Path) -> OsString {
     let mut dirs: Vec<PathBuf> = vec![
         home.join(".local/bin"),
         PathBuf::from("/opt/homebrew/bin"),
         PathBuf::from("/usr/local/bin"),
+        home.join(".npm-global/bin"),
+        home.join(".volta/bin"),
+        home.join("Library/pnpm"),
+        home.join(".local/share/pnpm"),
     ];
+    // nvm keeps one bin per node version; use the newest by version
+    // number, not lexically (v10 sorts after v9 as a string).
+    if let Ok(versions) = std::fs::read_dir(home.join(".nvm/versions/node")) {
+        let mut bins: Vec<(Vec<u64>, PathBuf)> = versions
+            .flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let nums: Vec<u64> = name
+                    .trim_start_matches('v')
+                    .split('.')
+                    .filter_map(|p| p.parse().ok())
+                    .collect();
+                let path = entry.path().join("bin");
+                (!nums.is_empty() && path.is_dir()).then_some((nums, path))
+            })
+            .collect();
+        bins.sort();
+        if let Some((_, newest)) = bins.pop() {
+            dirs.push(newest);
+        }
+    }
+    dirs.retain(|d| d.is_dir());
+    // The inherited PATH joins as elements, not as one string: join_paths
+    // rejects an element containing the separator itself, so folding the
+    // whole PATH in as one entry silently discarded the augmented dirs
+    // (and every launch behaved as a bare shell launch). Empty elements
+    // — a stray ':' — are dropped so join_paths always succeeds.
     if let Some(path) = std::env::var_os("PATH") {
-        dirs.push(PathBuf::from(path));
+        dirs.extend(
+            std::env::split_paths(&path).filter(|d| !d.as_os_str().is_empty()),
+        );
     }
     std::env::join_paths(dirs).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
 }
@@ -454,4 +497,88 @@ fn main() {
             take_and_terminate(&state);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The clean-machine contract for augmented_path: a CLI installed in
+    /// the user's own bin dir is found with no shell PATH at all, missing
+    /// directories are dropped instead of padding the PATH, and nvm picks
+    /// the newest version numerically (v10 beats v9, where a lexical sort
+    /// would pick v9).
+    #[test]
+    fn augmented_path_finds_user_bins_without_shell_path() {
+        let home = std::env::temp_dir().join("recap-augmented-path-test");
+        let _ = std::fs::remove_dir_all(&home);
+        let user_bin = home.join(".local/bin");
+        std::fs::create_dir_all(&user_bin).unwrap();
+        let cli = user_bin.join("claude");
+        std::fs::write(&cli, "#!/bin/sh\n").unwrap();
+        make_executable_helper(&cli);
+
+        let path = augmented_path(&home);
+        let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
+        assert_eq!(dirs.first(), Some(&user_bin));
+        // /opt/homebrew/bin and friends do not exist in this sandbox, and
+        // must not appear as dead entries.
+        assert!(!dirs.contains(&PathBuf::from("/opt/homebrew/bin")));
+        assert_eq!(
+            find_cli("claude", &path),
+            Some(cli.to_string_lossy().to_string())
+        );
+        assert_eq!(find_cli("nothing-by-this-name", &path), None);
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn augmented_path_picks_the_newest_nvm_node_numerically() {
+        let home = std::env::temp_dir().join("recap-augmented-nvm-test");
+        let _ = std::fs::remove_dir_all(&home);
+        for v in ["v9.0.0", "v10.0.0"] {
+            std::fs::create_dir_all(home.join(format!(".nvm/versions/node/{v}/bin"))).unwrap();
+        }
+
+        let path = augmented_path(&home);
+        let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
+        assert!(
+            dirs.contains(&home.join(".nvm/versions/node/v10.0.0/bin")),
+            "the newest node must be on the PATH: {dirs:?}"
+        );
+        assert!(
+            !dirs.contains(&home.join(".nvm/versions/node/v9.0.0/bin")),
+            "older node versions must not be: {dirs:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    fn make_executable_helper(path: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    /// The settings round-trip carries the first-run flag, and an old
+    /// settings.json written before onboarding existed still parses.
+    #[test]
+    fn settings_parse_without_onboarded() {
+        let old = r#"{"inference_cli":"auto","custom_cli_path":"","timeout_sec":240}"#;
+        let parsed: Settings = serde_json::from_str(old).unwrap();
+        assert!(!parsed.onboarded);
+        let round: Settings = serde_json::from_str(
+            &serde_json::to_string(&Settings {
+                inference_cli: "auto".into(),
+                custom_cli_path: String::new(),
+                timeout_sec: 60,
+                onboarded: true,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(round.onboarded);
+    }
 }

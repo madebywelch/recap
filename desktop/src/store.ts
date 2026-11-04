@@ -1,6 +1,7 @@
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  EnvelopeError,
   validateScanResult,
   type Candidate,
   type ScanResult,
@@ -34,6 +35,10 @@ export interface StoreState {
   windowCandidates: number;
   /** Set when a live scan was attempted and failed; the fixture is shown. */
   error?: string;
+  /** Set when the engine's envelope failed the version handshake or the
+   *  contract validation: the app refuses to render rather than fall back
+   *  to fixture data, and shows the message instead. */
+  refusal?: string;
 }
 
 /** One persisted run row, as the Brief reads it back. */
@@ -269,6 +274,14 @@ async function loadCandidates(): Promise<Candidate[]> {
  * Resolves rather than rejects on failure; the error rides in StoreState
  * so the Explorer can say why it is showing fixture data.
  */
+/** How a failed launch scan classifies (the initStore catch): a contract
+ *  failure refuses the whole app; anything else is a scan failure and
+ *  falls back to the committed fixture. */
+export function classifyLaunchFailure(e: unknown): { refusal?: string; error?: string } {
+  if (e instanceof EnvelopeError) return { refusal: e.message };
+  return { error: e instanceof Error ? e.message : String(e) };
+}
+
 export async function initStore(): Promise<StoreState> {
   if (!inTauri()) return fixtureStore();
   try {
@@ -296,7 +309,23 @@ export async function initStore(): Promise<StoreState> {
       windowCandidates: scan.candidates.length,
     };
   } catch (e) {
-    return fixtureStore(e instanceof Error ? e.message : String(e));
+    // A failed launch scan falls back to the committed fixture — but a
+    // contract failure (EnvelopeError) is not a scan failure: it means the
+    // engine beside this app isn't the one it was built with, so the app
+    // refuses to render anything rather than show data it can't validate.
+    const { refusal, error } = classifyLaunchFailure(e);
+    if (refusal) {
+      return {
+        source: "fixture",
+        since: "",
+        candidates: [],
+        sessions: 0,
+        pairs: 0,
+        windowCandidates: 0,
+        refusal,
+      };
+    }
+    return fixtureStore(error);
   }
 }
 

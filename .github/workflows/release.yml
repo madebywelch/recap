@@ -1,0 +1,73 @@
+name: release
+
+# The first releasable macOS build (spec §Build order M6): the bundled
+# sidecar plus the Tauri app as a .dmg for aarch64-apple-darwin — the
+# primary target, Robert's M-series Mac. Unsigned by default; codesigning
+# and notarization turn themselves on only when the APPLE_* secrets exist
+# (see desktop/README.md §Signing and notarization).
+#
+# workflow_dispatch builds and attaches the dmg as a run artifact; a v*
+# tag additionally publishes a GitHub Release with the dmg attached.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - name: Pass Apple secrets to the build when they exist
+        # Tauri signs when APPLE_SIGNING_IDENTITY is set and notarizes
+        # when APPLE_ID/APPLE_PASSWORD are set, so exporting only the
+        # non-empty secrets is the whole gate.
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -n "${!v}" ]; then
+              echo "$v=${!v}" >> "$GITHUB_ENV"
+            fi
+          done
+
+      - name: Build the app and its dmg
+        working-directory: desktop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm sidecar aarch64-apple-darwin
+          pnpm tauri build --target aarch64-apple-darwin
+
+      - name: Upload the dmg as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recap-macos-aarch64
+          path: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: Attach the dmg to a GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg

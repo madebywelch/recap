@@ -23,7 +23,7 @@ When you offload most of your coding to an AI agent, you stop reading what it pr
 
 ![The end-of-brief screen in dark mode: today's six concepts, each scheduled for review tomorrow](docs/images/done-dark.png)
 
-To build and run it, see [desktop/README.md](desktop/README.md).
+To build and run it, see [desktop/README.md](desktop/README.md). Prebuilt macOS builds (Apple silicon) come from the [release workflow](https://github.com/madebywelch/recap/actions/workflows/release.yml) — unsigned by default, so Gatekeeper asks once on first open; see [desktop/README.md](desktop/README.md) for signing and notarization.
 
 ## How it works
 
