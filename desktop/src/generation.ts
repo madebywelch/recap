@@ -22,6 +22,8 @@ export interface Settings {
   inference_cli: "auto" | "claude" | "custom" | "codex";
   custom_cli_path: string;
   timeout_sec: number;
+  /** First-run flag: the welcome sheet shows until dismissed. */
+  onboarded: boolean;
 }
 
 export interface Detection {

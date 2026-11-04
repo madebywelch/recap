@@ -552,3 +552,77 @@ button {
   font-size: 13px;
   color: var(--text-dim);
 }
+
+/* --- first-run onboarding (M6) --- */
+
+.first-run {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: var(--s6);
+}
+
+/* the desk at partial opacity, as its own layer so the sheet stays opaque */
+.first-run-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--desk);
+  opacity: 0.82;
+}
+
+.first-run .sheet {
+  position: relative;
+  max-width: 620px;
+  min-height: 0;
+  padding: var(--s7) var(--s7) var(--s6);
+  border-radius: var(--r-lg);
+}
+
+.first-run-facts {
+  margin-top: var(--s5);
+  display: grid;
+  gap: var(--s4);
+}
+
+.first-run-fact p {
+  margin: 6px 0 0;
+  max-width: 60ch;
+  font: 400 var(--t-body) / 1.5 var(--font-serif);
+  color: var(--ink-2);
+}
+
+.first-run-fact code {
+  font-family: var(--font-mono);
+  font-size: var(--t-mono);
+  background: var(--code-bg);
+  border-radius: var(--r-sm);
+  padding: 1px 4px;
+}
+
+.first-run-actions {
+  margin-top: var(--s6);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.first-run-error {
+  margin: 0;
+  color: var(--neg);
+  font: 500 13px / 1.4 var(--font-ui);
+}
+
+/* --- engine-contract refusal (M6): the whole app becomes the message --- */
+
+.refusal-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.refusal-shell .folio-scroll {
+  padding: var(--s8) var(--s6) 0;
+}
