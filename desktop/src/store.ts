@@ -6,7 +6,8 @@ import {
   type ScanResult,
   type Signal,
 } from "./fixtures";
-import { parseArchiveMeta, parseEntries, type BriefEntry } from "./brief";
+import { localDate, parseArchiveMeta, parseEntries, type BriefEntry } from "./brief";
+import { applyGrade, type Grade, type ReviewState } from "./review";
 import fixtureScanSource from "../fixtures/engine-scan.json";
 
 /**
@@ -338,6 +339,17 @@ export async function recordGeneration(rec: GenerationRecord): Promise<void> {
   );
   if (rec.status === "done" && run.lastInsertId !== undefined) {
     await upsertConcepts(run.lastInsertId, rec.date, parseEntries(rec.rawOutput));
+    // The spec's learning loop: the day's concepts enter review
+    // automatically, due tomorrow. The OR IGNORE keeps a manual seed's
+    // schedule (M4's Library add) untouched.
+    const tomorrow = localDate(new Date(Date.now() + 86_400_000));
+    await db!.execute(
+      `INSERT INTO review_state (concept_id, due_on)
+       SELECT id, $2 FROM concepts WHERE date = $1
+       ON CONFLICT(concept_id) DO NOTHING`,
+      [rec.date, tomorrow],
+    );
+    emitDueChanged();
   }
 }
 
@@ -474,17 +486,123 @@ export async function seedReview(conceptId: number, dueOn: string): Promise<void
      ON CONFLICT(concept_id) DO UPDATE SET due_on = excluded.due_on`,
     [conceptId, dueOn],
   );
+  emitDueChanged();
 }
 
 /** Removes a concept from review; its grade history goes with it. */
 export async function unseedReview(conceptId: number): Promise<void> {
   if (!db) return;
   await db.execute(`DELETE FROM review_state WHERE concept_id = $1`, [conceptId]);
+  emitDueChanged();
+}
+
+/** Screens that show due counts (the nav badge, the Review screen) hear
+ *  about changes: seeding, unseeding, grading, and generation's auto
+ *  seed all move due dates. */
+type DueListener = () => void;
+const dueListeners = new Set<DueListener>();
+
+export function onDueChanged(cb: DueListener): () => void {
+  dueListeners.add(cb);
+  return () => {
+    dueListeners.delete(cb);
+  };
+}
+
+function emitDueChanged(): void {
+  for (const cb of dueListeners) cb();
+}
+
+/** A review session's queue: the due concepts, oldest due first, at most
+ *  ten — the spec's bounded check-in. */
+export async function loadDueConcepts(today: string, limit = 10): Promise<Concept[]> {
+  if (!db) return [];
+  const rows = await db.select<ConceptRow[]>(
+    `SELECT ${CONCEPT_COLUMNS}
+     FROM review_state r
+     JOIN concepts c ON c.id = r.concept_id
+     WHERE r.due_on <= $1
+     ORDER BY r.due_on ASC, c.id ASC
+     LIMIT $2`,
+    [today, limit],
+  );
+  return rows.map(toConcept);
+}
+
+/** Grades one concept and persists the reschedule. */
+export async function applyReview(conceptId: number, grade: Grade): Promise<ReviewState> {
+  if (!db) throw new Error("no store");
+  const rows = await db.select<
+    { interval_days: number; ease: number; reviews: number; lapses: number; last_grade: Grade | null; due_on: string; last_reviewed_at: string | null }[]
+  >(`SELECT interval_days, ease, reviews, lapses, last_grade, due_on, last_reviewed_at
+     FROM review_state WHERE concept_id = $1`, [conceptId]);
+  const row = rows[0];
+  if (!row) throw new Error("concept is not in review");
+  const next = applyGrade(
+    {
+      dueOn: row.due_on,
+      intervalDays: row.interval_days,
+      ease: row.ease,
+      reviews: row.reviews,
+      lapses: row.lapses,
+      lastGrade: row.last_grade,
+      lastReviewedAt: row.last_reviewed_at,
+    },
+    grade,
+    new Date(),
+  );
+  await db.execute(
+    `UPDATE review_state
+     SET due_on = $2, interval_days = $3, ease = $4, reviews = $5,
+         lapses = $6, last_grade = $7, last_reviewed_at = $8
+     WHERE concept_id = $1`,
+    [
+      conceptId,
+      next.dueOn,
+      next.intervalDays,
+      next.ease,
+      next.reviews,
+      next.lapses,
+      next.lastGrade,
+      next.lastReviewedAt,
+    ],
+  );
+  emitDueChanged();
+  return next;
+}
+
+/** What the badge and the empty states need: how much is due now, what
+ *  the next check-in holds, and gentle weekly progress. */
+export interface DueOverview {
+  due: number;
+  inReview: number;
+  next: { on: string; count: number } | null;
+  learnedThisWeek: number;
+}
+
+export async function loadDueOverview(today: string): Promise<DueOverview> {
+  if (!db) return { due: 0, inReview: 0, next: null, learnedThisWeek: 0 };
+  const due = await db.select<{ n: number }[]>(`SELECT COUNT(*) AS n FROM review_state WHERE due_on <= $1`, [today]);
+  const inReview = await db.select<{ n: number }[]>(`SELECT COUNT(*) AS n FROM review_state`);
+  const next = await db.select<{ next_on: string; n: number }[]>(
+    `SELECT due_on AS next_on, COUNT(*) AS n FROM review_state WHERE due_on > $1 GROUP BY due_on ORDER BY due_on ASC LIMIT 1`,
+    [today],
+  );
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const learned = await db.select<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM review_state WHERE last_grade = 'got-it' AND last_reviewed_at >= $1`,
+    [weekAgo],
+  );
+  return {
+    due: due[0]?.n ?? 0,
+    inReview: inReview[0]?.n ?? 0,
+    next: next[0] ? { on: next[0].next_on, count: next[0].n } : null,
+    learnedThisWeek: learned[0]?.n ?? 0,
+  };
 }
 
 /** The exchanges behind a concept's sources, for the reader's expand. */
-export async function loadCandidatesByIds(ids: string[]): Promise<Candidate[]> {
-  if (!db || ids.length === 0) return [];
+export async function loadCandidatesByIds(ids: string[]): Promise<Candidate[]> {  if (!db || ids.length === 0) return [];
   const rows = await db.select<CandidateRow[]>(
     `SELECT id, tool, session, cwd, ts, user_message, assistant_excerpt,
             score, user_score, assistant_bonus, signals
