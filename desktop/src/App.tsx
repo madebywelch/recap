@@ -5,7 +5,10 @@ import ConceptLibrary from "./screens/ConceptLibrary";
 import Review from "./screens/Review";
 import { initStore, type StoreState } from "./store";
 
-type Screen = "brief" | "library" | "signals" | "review";
+export type Screen = "brief" | "library" | "signals" | "review";
+
+/** Switch screens; a candidate id opens the Explorer on that candidate. */
+export type Navigate = (to: Screen, candidateId?: string) => void;
 
 const NAV: { id: Screen; label: string }[] = [
   { id: "brief", label: "Daily Brief" },
@@ -17,6 +20,11 @@ const NAV: { id: Screen; label: string }[] = [
 export default function App() {
   const [screen, setScreen] = useState<Screen>("brief");
   const [store, setStore] = useState<StoreState | null>(null);
+  const [focus, setFocus] = useState<string | null>(null);
+  const go: Navigate = (to, candidateId) => {
+    setScreen(to);
+    setFocus(candidateId ?? null);
+  };
 
   // The spec's launch flow: scan on open so the Explorer (and the store)
   // reflect this machine's sessions, falling back to the fixture.
@@ -32,6 +40,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="titlebar" data-tauri-drag-region />
       <aside className="sidebar">
         <div className="wordmark">
           recap<span className="wordmark-tag">desktop</span>
@@ -41,7 +50,7 @@ export default function App() {
             <button
               key={item.id}
               className={screen === item.id ? "nav-item active" : "nav-item"}
-              onClick={() => setScreen(item.id)}
+              onClick={() => go(item.id)}
             >
               {item.label}
             </button>
@@ -56,9 +65,9 @@ export default function App() {
         </div>
       </aside>
       <main className="content">
-        {screen === "brief" && <DailyBrief />}
-        {screen === "library" && <ConceptLibrary />}
-        {screen === "signals" && <SignalExplorer store={store} />}
+        {screen === "brief" && <DailyBrief onNavigate={go} />}
+        {screen === "library" && <ConceptLibrary onNavigate={go} />}
+        {screen === "signals" && <SignalExplorer store={store} focus={focus} onNavigate={go} />}
         {screen === "review" && <Review />}
       </main>
     </div>

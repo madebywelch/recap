@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Main window capabilities. run_scan is an app command; the SQL plugin powers the SQLite store.",
   "windows": ["main"],
-  "permissions": ["core:default", "sql:default", "sql:allow-execute"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "sql:default", "sql:allow-execute"]
 }

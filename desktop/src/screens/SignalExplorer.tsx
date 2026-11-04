@@ -1,55 +1,37 @@
+import { useEffect, useRef } from "react";
+import briefSource from "../../fixtures/daily-brief.md?raw";
 import { useExplorer } from "../useExplorer";
 import type { StoreState } from "../store";
+import type { Navigate } from "../App";
 import {
   allSignalNames,
   assistantSignals,
   cappedAt,
+  rawAssistantBonus,
   scoreBounds,
   userSignals,
   type ExplorerFilters,
 } from "../explorer-filters";
 import type { Candidate, Signal } from "../fixtures";
+import { count, parseEntries, project, signed } from "../brief";
 
-/** Presentation is deliberately thin — the design pass (see the spec's
- *  build order) replaces the look; the state and filtering live in
- *  useExplorer and explorer-filters. */
+const inBrief = new Set(parseEntries(briefSource).flatMap((e) => e.sources));
 
-function firstLine(text: string): string {
-  const line = text.split("\n")[0];
-  return line.length > 96 ? line.slice(0, 96) + "…" : line;
+const TOOLS: ExplorerFilters["tool"][] = ["all", "claude", "codex"];
+
+function num(n: number): string {
+  return n < 0 ? `−${Math.abs(n)}` : String(n);
 }
 
-function formatTs(ts: string): string {
-  return new Date(ts).toLocaleString(undefined, {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function shortTs(ts: string): string {
+  return new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function fullTs(ts: string): string {
-  return new Date(ts).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function oneLine(text: string): string {
+  return text.trim().replace(/\s+/g, " ");
 }
 
-function signed(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
-}
-
-function Chip({ signal }: { signal: Signal }) {
-  return (
-    <span className={signal.weight >= 0 ? "chip pos" : "chip neg"}>
-      {signal.name} {signed(signal.weight)}
-    </span>
-  );
-}
-
-function FilterBar({
+function Filters({
   candidates,
   filters,
   onChange,
@@ -59,71 +41,70 @@ function FilterBar({
   onChange: (next: ExplorerFilters) => void;
 }) {
   const { min, max } = scoreBounds(candidates);
-  const toggleSignal = (name: string) => {
-    const has = filters.signals.includes(name);
+  const toggleSignal = (name: string) =>
     onChange({
       ...filters,
-      signals: has
+      signals: filters.signals.includes(name)
         ? filters.signals.filter((s) => s !== name)
         : [...filters.signals, name],
     });
-  };
   return (
-    <div className="filter-bar">
-      <label className="filter">
-        <span className="filter-label">min score</span>
-        <input
-          type="range"
-          min={min}
-          max={max}
-          value={filters.minScore}
-          onChange={(e) => onChange({ ...filters, minScore: Number(e.target.value) })}
-        />
-        <span className="filter-value">{filters.minScore}</span>
-      </label>
-      <label className="filter">
-        <span className="filter-label">tool</span>
-        <select
-          value={filters.tool}
-          onChange={(e) =>
-            onChange({ ...filters, tool: e.target.value as ExplorerFilters["tool"] })
-          }
-        >
-          <option value="all">all</option>
-          <option value="claude">claude</option>
-          <option value="codex">codex</option>
-        </select>
-      </label>
-      <label className="filter">
-        <span className="filter-label">from</span>
-        <input
-          type="date"
-          value={filters.dateFrom}
-          onChange={(e) => onChange({ ...filters, dateFrom: e.target.value })}
-        />
-      </label>
-      <label className="filter">
-        <span className="filter-label">to</span>
-        <input
-          type="date"
-          value={filters.dateTo}
-          onChange={(e) => onChange({ ...filters, dateTo: e.target.value })}
-        />
-      </label>
-      <label className="filter grow">
-        <span className="filter-label">search</span>
+    <div className="xfilters">
+      <label className="xsearch">
+        <span aria-hidden>⌕</span>
         <input
           type="search"
-          placeholder="in the redacted exchange"
+          placeholder="Search messages"
           value={filters.text}
           onChange={(e) => onChange({ ...filters, text: e.target.value })}
         />
       </label>
-      <div className="filter signal-filters">
+      <div className="xrow">
+        <label className="xslider">
+          <span>Min score</span>
+          <input
+            type="range"
+            min={min}
+            max={max}
+            value={filters.minScore}
+            onChange={(e) => onChange({ ...filters, minScore: Number(e.target.value) })}
+          />
+          <b>{num(filters.minScore)}</b>
+        </label>
+        <div className="seg" role="group" aria-label="Tool">
+          {TOOLS.map((t) => (
+            <button
+              key={t}
+              className={filters.tool === t ? "on" : ""}
+              aria-pressed={filters.tool === t}
+              onClick={() => onChange({ ...filters, tool: t })}
+            >
+              {t === "all" ? "All" : t}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="xrow">
+        <span>Window</span>
+        <input
+          type="date"
+          aria-label="From"
+          value={filters.dateFrom}
+          onChange={(e) => onChange({ ...filters, dateFrom: e.target.value })}
+        />
+        <span>to</span>
+        <input
+          type="date"
+          aria-label="To"
+          value={filters.dateTo}
+          onChange={(e) => onChange({ ...filters, dateTo: e.target.value })}
+        />
+      </div>
+      <div className="xchips">
         {allSignalNames(candidates).map((name) => (
           <button
             key={name}
-            className={filters.signals.includes(name) ? "chip toggle on" : "chip toggle"}
+            className={filters.signals.includes(name) ? "signal on" : "signal"}
             aria-pressed={filters.signals.includes(name)}
             onClick={() => toggleSignal(name)}
           >
@@ -135,131 +116,228 @@ function FilterBar({
   );
 }
 
-export default function SignalExplorer({ store }: { store: StoreState | null }) {
+function Line({ s, cap }: { s: Signal; cap?: boolean }) {
+  return (
+    <div className={cap ? "li capr" : "li"}>
+      <span>{s.name}</span>
+      <span className="dots" />
+      <span className="v">{signed(s.weight)}</span>
+    </div>
+  );
+}
+
+function Ledger({ c }: { c: Candidate }) {
+  const user = userSignals(c);
+  const assistant = assistantSignals(c).filter((s) => s.name !== "assistant-cap");
+  const capSignal = assistantSignals(c).find((s) => s.name === "assistant-cap");
+  const cap = cappedAt(c);
+  const raw = rawAssistantBonus(c);
+  return (
+    <>
+      <div className="ledger">
+        <div className="sec">
+          User side <em>— the gate. Only what you wrote can make a moment count.</em>
+        </div>
+        {user.map((s) => (
+          <Line key={s.name} s={s} />
+        ))}
+        {user.length === 0 && <div className="li none">no user signals fired</div>}
+        <div className="li sub">
+          <span>User score</span>
+          <span className="v">{num(c.userScore)}</span>
+        </div>
+        <div className="sec">
+          Assistant side <em>— amplification, never more than the gate</em>
+        </div>
+        {assistant.map((s) => (
+          <Line key={s.name} s={s} />
+        ))}
+        {capSignal && <Line s={capSignal} cap />}
+        {assistant.length === 0 && <div className="li none">no assistant signals fired</div>}
+        <div className="li sub">
+          <span>
+            Assistant bonus{" "}
+            <i>
+              {cap !== null
+                ? `(${raw} raw, capped at ${cap})`
+                : assistant.length > 0
+                  ? `(cap ${num(c.userScore)}, not reached)`
+                  : ""}
+            </i>
+          </span>
+          <span className="v">{signed(c.assistantBonus)}</span>
+        </div>
+        <div className="li total">
+          <span>Score</span>
+          <span className="v">{num(c.score)}</span>
+        </div>
+      </div>
+      {cap !== null ? (
+        <p className="note">
+          The reply earned {raw}, but the bonus is capped at the user score of {cap}. The assistant can amplify a learning
+          moment; it can never create one.
+        </p>
+      ) : (
+        <p className="note quiet">
+          The assistant bonus is capped at the user score, so the reply can amplify a learning moment but never create one.
+        </p>
+      )}
+    </>
+  );
+}
+
+function Detail({ c, onNavigate }: { c: Candidate; onNavigate: Navigate }) {
+  return (
+    <div className="xsheet">
+      <div className="kicker">
+        Selected candidate · <span className="xid">{c.id}</span>
+      </div>
+      <p className="dq">“{oneLine(c.userMessage)}”</p>
+      <div className="who">
+        {c.tool} · {project(c)} · {shortTs(c.ts)}
+        {inBrief.has(c.id) && (
+          <>
+            {" · "}
+            <button className="link" onClick={() => onNavigate("brief")}>
+              In today's brief →
+            </button>
+          </>
+        )}
+      </div>
+      <Ledger c={c} />
+      <section className="source">
+        <h4 className="label">The exchange</h4>
+        <div className="exchange-sheet">
+          <div className="turn">
+            <div className="turn-who">You</div>
+            <pre>{c.userMessage}</pre>
+          </div>
+          <div className="turn">
+            <div className="turn-who">{c.tool}</div>
+            <pre>{c.assistantExcerpt}</pre>
+          </div>
+        </div>
+        <dl className="meta">
+          <dt>Tool</dt>
+          <dd>{c.tool}</dd>
+          <dt>Session</dt>
+          <dd>{c.sessionId}</dd>
+          <dt>Working dir</dt>
+          <dd>{c.cwd || "—"}</dd>
+          <dt>Time</dt>
+          <dd>{c.ts}</dd>
+        </dl>
+      </section>
+    </div>
+  );
+}
+
+export default function SignalExplorer({
+  store,
+  focus,
+  onNavigate,
+}: {
+  store: StoreState | null;
+  focus: string | null;
+  onNavigate: Navigate;
+}) {
   const { filters, setFilters, visible, selected, select } = useExplorer(store);
+  const rowsRef = useRef<HTMLDivElement>(null);
+
+  // A cross-link names a candidate: widen the filters until it is listed.
+  useEffect(() => {
+    const target = focus ? store?.candidates.find((c) => c.id === focus) : undefined;
+    if (!target) return;
+    const day = target.ts.slice(0, 10);
+    setFilters((f) => ({
+      ...f,
+      minScore: Math.min(f.minScore, target.score),
+      tool: "all",
+      signals: [],
+      text: "",
+      dateFrom: f.dateFrom && day < f.dateFrom ? "" : f.dateFrom,
+      dateTo: f.dateTo && day > f.dateTo ? "" : f.dateTo,
+    }));
+    select(target.id);
+  }, [focus, store, setFilters, select]);
+
+  useEffect(() => {
+    rowsRef.current?.querySelector(".xrowc.sel")?.scrollIntoView({ block: "nearest" });
+  }, [selected?.id]);
 
   if (!store) {
     return (
-      <div className="explorer">
-        <header className="screen-header">
-          <h1>Signal Explorer</h1>
-        </header>
-        <div className="explorer-panes">
-          <div className="pane-message">Scanning sessions…</div>
+      <div className="split">
+        <div className="xlist">
+          <header className="lhead">
+            <div className="kicker">Signal Explorer</div>
+            <h1>Why the engine chose</h1>
+            <p>Scanning this machine's sessions…</p>
+          </header>
         </div>
+        <div className="xdetail" />
       </div>
     );
   }
 
-  const cap = selected ? cappedAt(selected) : null;
-
   return (
-    <div className="explorer">
-      <header className="screen-header">
-        <h1>Signal Explorer</h1>
-        <p>
-          {store.source === "live"
-            ? `${store.candidates.length} candidates in the store, live from the last scan (since ${store.since}) — the heuristics engine made visible. Filter, select, and read the arithmetic behind each rank.`
-            : "Committed fixture data — the browser build can't run the engine sidecar. Run the app shell for a live scan."}
-        </p>
-        {store.error && <p className="error-note">Live scan failed: {store.error}</p>}
-      </header>
-      <FilterBar candidates={store.candidates} filters={filters} onChange={setFilters} />
-      <div className="explorer-panes">
-        <div className="candidate-list">
-          {visible.map((cand) => (
+    <div className="split">
+      <div className="xlist">
+        <header className="lhead">
+          <div className="kicker">Signal Explorer</div>
+          <h1>Why the engine chose</h1>
+          <p>
+            {store.source === "live" ? "Live scan" : "Engine fixture"} · {count(store.candidates.length, "candidate")} since{" "}
+            {new Date(store.since + "T00:00").toLocaleDateString([], { month: "short", day: "numeric" })} · sorted by score
+          </p>
+          {store.source === "fixture" && !store.error && (
+            <p className="xnote">The browser build can't run the engine sidecar. The app shell scans live.</p>
+          )}
+          {store.error && <p className="xnote error">Live scan failed, so this is the fixture: {store.error}</p>}
+        </header>
+        <Filters candidates={store.candidates} filters={filters} onChange={setFilters} />
+        <div className="xrows" ref={rowsRef}>
+          {visible.map((c) => (
             <button
-              key={cand.id}
-              className={selected && cand.id === selected.id ? "candidate active" : "candidate"}
-              onClick={() => select(cand.id)}
+              key={c.id}
+              className={"xrowc" + (selected && c.id === selected.id ? " sel" : "") + (c.score < 3 ? " low" : "")}
+              aria-current={selected?.id === c.id}
+              onClick={() => select(c.id)}
             >
-              <span
-                className={
-                  "score-badge " + (cand.score >= 8 ? "high" : cand.score >= 5 ? "mid" : "low")
-                }
-              >
-                {cand.score}
-              </span>
-              <span className="candidate-line">{firstLine(cand.userMessage)}</span>
-              <span className="candidate-meta">
-                {cand.tool} · {formatTs(cand.ts)}
-              </span>
-              <span className="candidate-chips">
-                {cand.signals.map((s) => (
-                  <span key={s.name} className="chip">
-                    {s.name} {signed(s.weight)}
-                  </span>
-                ))}
+              <span className="n">{num(c.score)}</span>
+              <span>
+                <span className="u">{oneLine(c.userMessage)}</span>
+                <span className="m">
+                  {c.tool} · {project(c)} · {shortTs(c.ts)}
+                  {inBrief.has(c.id) && <span className="tag">in brief</span>}
+                </span>
               </span>
             </button>
           ))}
-          {visible.length === 0 && (
-            <div className="pane-message">No candidates match the current filters.</div>
+          {store.candidates.length === 0 ? (
+            <p className="quiet-note xempty">
+              The last scan found no learning moments in this window. New Claude Code and Codex sessions show up here after
+              the next scan.
+            </p>
+          ) : (
+            visible.length === 0 && (
+              <p className="quiet-note xempty">
+                No candidates match these filters. Lower the minimum score or clear a signal to see more.
+              </p>
+            )
           )}
         </div>
+      </div>
+      <div className="xdetail">
         {selected ? (
-          <div className="candidate-detail">
-            <div className="detail-meta">
-              <span className="tool-tag">{selected.tool}</span>
-              <span className="detail-cwd">{selected.cwd}</span>
-              <span className="detail-time">{formatTs(selected.ts)}</span>
-            </div>
-            <section className="arithmetic">
-              <h2>Score arithmetic</h2>
-              <div className="score-block">
-                <div className="block-head">
-                  user score <span className="block-val">{selected.userScore}</span>
-                </div>
-                <div className="chip-row">
-                  {userSignals(selected).map((s) => (
-                    <Chip key={s.name} signal={s} />
-                  ))}
-                  {userSignals(selected).length === 0 && (
-                    <span className="muted">no user signals fired</span>
-                  )}
-                </div>
-              </div>
-              <div className="score-block">
-                <div className="block-head">
-                  assistant bonus{" "}
-                  <span className="block-val">{signed(selected.assistantBonus)}</span>
-                </div>
-                <div className="chip-row">
-                  {assistantSignals(selected).map((s) => (
-                    <Chip key={s.name} signal={s} />
-                  ))}
-                  {assistantSignals(selected).length === 0 && (
-                    <span className="muted">no assistant signals — bonus 0</span>
-                  )}
-                </div>
-                {cap !== null && (
-                  <p className="cap-note">
-                    assistant bonus capped at {cap} — the reply can amplify a learning
-                    moment, never create one
-                  </p>
-                )}
-              </div>
-              <div className="score-total">
-                total <span className="total-val">{selected.score}</span>
-                <span className="total-expr">
-                  {selected.userScore} {signed(selected.assistantBonus)}
-                </span>
-              </div>
-            </section>
-            <section className="exchange">
-              <h2>The exchange</h2>
-              <pre className="exchange-user">{selected.userMessage}</pre>
-              <pre className="exchange-assistant">{selected.assistantExcerpt}</pre>
-              <div className="session-meta">
-                <span>session {selected.sessionId}</span>
-                {selected.cwd && <span>{selected.cwd}</span>}
-                <span>{fullTs(selected.ts)}</span>
-              </div>
-            </section>
-          </div>
+          <Detail c={selected} onNavigate={onNavigate} />
         ) : (
-          <div className="candidate-detail">
-            <div className="pane-message">Select a candidate.</div>
+          <div className="xsheet">
+            <p className="quiet-note">
+              {store.candidates.length === 0
+                ? "Once a scan finds a candidate, its score arithmetic and the full exchange appear here."
+                : "Every candidate is filtered out. Widen the filters to read one."}
+            </p>
           </div>
         )}
       </div>
