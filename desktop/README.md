@@ -9,7 +9,7 @@ A Tauri 2 shell for the learning-center app: where recap's output becomes screen
 | Daily Brief | real | Live: reads the persisted generation run for the scanned window, or offers "Write today's brief" when there isn't one. Generation runs the engine sidecar with the inference CLI, shows phase progress (scan → writing, elapsed, Cancel), and renders the result in the Folio card layout. Falls back to the committed fixture outside the shell. |
 | Signal Explorer | real | Live data: the app scans on open via the bundled engine sidecar, upserts the scan into SQLite, and renders the store — every candidate with score and signal chips, filters (min score, tool, signal, date range, text), and the selected one's score arithmetic (user gate, assistant amplification, the cap called out) over the redacted exchange. Falls back to the committed fixture outside the shell. |
 | Concept Library | real | Live: FTS5 search over every concept from past briefs, grouped by day, with a reader at reading measure that expands to the source exchange and links into the Explorer. On open, the store imports the shared archive (~/.claude/morning-recap) through the same parser generation uses — idempotent, so relaunching adds nothing — and pre-app entries carry an honest "no candidate data" note. Review seeding adds/removes the `review_state` row (due tomorrow, interval 1, ease 2.5). |
-| Review | placeholder | Not built yet. The plan: a short daily pass over saved concepts, drawn from your own sessions. |
+| Review | real | Live: a bounded session over what's due (at most ten, oldest first) — title and recall prompt only, Space reveals the explainer with the exchange one expand further, then Got it / Fuzzy / Lost it (1/2/3 on the keyboard). SM-2 reschedules every grade (ease 2.5 start, 1.3 floor, 90-day cap, lapses reset to tomorrow) with the confirmation line before moving on, and the session ends in a done-state with kept/lost counts, the next check-in, and weekly progress. A due-count badge rides the nav entry; a generated brief's concepts seed themselves, due tomorrow. |
 | Settings | real | The inference CLI (auto, claude, codex, or a custom path), the generation timeout (60–900s), the augmented PATH display, and preflight detection so a missing CLI is never a surprise mid-generation. Persisted in settings.json next to the store. |
 
 No component libraries, plain CSS, no router — four screens don't need one. Markdown rendering uses `marked`; that is the only runtime dependency beyond React.
@@ -76,9 +76,17 @@ The Library is the accumulating half of the learning center: every concept the e
 - **First-run import.** On open, the store reads every `recap-*.md` in the shared archive dir through the `read_archives` shell command and parses each with the same `src/brief.ts` parser generation uses — one `runs` row per file with the header's window facts, then its concepts. Files the app itself recorded (their run row carries the archive path) are skipped, which is what makes the import idempotent: relaunching with the same history adds nothing. Entries whose brief omitted the `sources:` line — and pre-app runs generally — surface in the reader with an honest note that no candidate data is behind them.
 - **Search and the reader.** The search box is an FTS5 MATCH over titles and bodies, bm25-ranked; the list groups by day with a review chip per seeded concept. The reader shows the full explainer at reading measure, the review status with add/remove (a `review_state` row: due tomorrow, interval 1, ease 2.5 — the Review screen in M5 grades against it), and the source exchange, with "Open in Signal Explorer" when the source is in the current scan window.
 
+## Review
+
+The check-in that makes the brief stick: active recall over what's due, graded into SM-2 — the Anki grandfather, nothing fancier.
+
+- **The session.** At most ten due concepts, oldest due first: only the concept's name and the recall prompt, Space (or the button) reveals the explainer, the exchange sits one expand further, and Got it / Fuzzy / Lost it grade — 1/2/3 on the keyboard. Each grade confirms the reschedule ("Kept — next review in 8 days") before moving on, and the session ends in a real done-state: kept and lost counts, the next check-in, and a gentle weekly row. No streaks, no reminders, nothing to feel guilty about skipping.
+- **Scheduling.** `src/review.ts` is the spec's SM-2 table exactly: quality 5/3/1, ease starting at 2.5 updating as `ease += 0.1 − (5−q) × (0.08 + (5−q) × 0.02)` (floored at 1.3), intervals first success 1 day, second 6, then previous × ease capped at 90 days; Lost it resets to tomorrow and counts a lapse. The success streak is encoded in the stored interval, so a concept relearns from the first rung after a lapse. All state persists in `review_state` and survives restarts.
+- **Seeding.** A generated brief's concepts enter review automatically the day they're written (due tomorrow; a manual seed's schedule is never overwritten), and the Library's add/remove keeps working. The nav entry carries the due count, refreshed whenever seeding, grading, or a generation moves due dates.
+
 ## What remains for later milestones
 
-- **M5 — Review.** The session UI and SM-2 grading against `review_state` (the table and seeding are already in place).
+- **M6 — First releasable build.** Packaging per OS, first-run onboarding, CLI detection hardening on a clean machine, signing per Robert's decision.
 - The fixtures stay: offline test data, the shape contract for the engine's output, and the corrupted copy that keeps proving the validator rejects bad payloads.
 
 ## Project layout
@@ -98,6 +106,8 @@ src/               React frontend
   useExplorer.ts   Explorer state (filters, selection)
   useBrief.ts      Daily Brief state machine (ready / cta / generating / error)
   useLibrary.ts    Library state (FTS search, reader, review seeding)
+  useReview.ts     Review session (queue, reveal, grades, done-state)
+  review.ts        SM-2 scheduling (pure; graded sequences tested)
   App.tsx          sidebar nav, launch scan, screen switch
   screens/         DailyBrief, SignalExplorer, ConceptLibrary, Review, Settings
 src-tauri/         the Rust shell

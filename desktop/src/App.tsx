@@ -4,7 +4,8 @@ import SignalExplorer from "./screens/SignalExplorer";
 import ConceptLibrary from "./screens/ConceptLibrary";
 import Review from "./screens/Review";
 import SettingsScreen from "./screens/Settings";
-import { initStore, type StoreState } from "./store";
+import { localDate } from "./brief";
+import { initStore, loadDueOverview, onDueChanged, type StoreState } from "./store";
 
 export type Screen = "brief" | "library" | "signals" | "review" | "settings";
 
@@ -23,6 +24,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("brief");
   const [store, setStore] = useState<StoreState | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
+  const [dueCount, setDueCount] = useState(0);
   const go: Navigate = (to, candidateId) => {
     setScreen(to);
     setFocus(candidateId ?? null);
@@ -40,6 +42,20 @@ export default function App() {
     };
   }, []);
 
+  // The Review nav badge: whatever is due now. Seeding, grading, and
+  // generation's auto-seed all move due dates, so the store tells us;
+  // the count also refreshes once the launch scan has opened the db.
+  useEffect(() => {
+    if (!store) return;
+    const refresh = () => {
+      loadDueOverview(localDate(new Date()))
+        .then((o) => setDueCount(o.due))
+        .catch(() => undefined);
+    };
+    refresh();
+    return onDueChanged(refresh);
+  }, [store]);
+
   return (
     <div className="app">
       <div className="titlebar" data-tauri-drag-region />
@@ -55,6 +71,7 @@ export default function App() {
               onClick={() => go(item.id)}
             >
               {item.label}
+              {item.id === "review" && dueCount > 0 && <span className="nav-badge">{dueCount}</span>}
             </button>
           ))}
         </nav>
@@ -70,7 +87,7 @@ export default function App() {
         {screen === "brief" && <DailyBrief store={store} onNavigate={go} />}
         {screen === "library" && <ConceptLibrary store={store} onNavigate={go} />}
         {screen === "signals" && <SignalExplorer store={store} focus={focus} onNavigate={go} />}
-        {screen === "review" && <Review />}
+        {screen === "review" && <Review store={store} onNavigate={go} />}
         {screen === "settings" && <SettingsScreen />}
       </main>
     </div>

@@ -1330,3 +1330,77 @@ code {
   color: var(--ink-2);
   margin: var(--s5) 0 0;
 }
+
+/* --- M5: Review — the session card, grades, the nav badge --- */
+
+.review-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  align-items: flex-start;
+  max-width: 60ch;
+}
+
+.review-prompt {
+  font: italic 400 var(--t-lead) / var(--lh-body) var(--font-serif);
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.review-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font: 500 var(--t-ui) / 1.4 var(--font-ui);
+  color: var(--accent);
+  margin: var(--s2) 0;
+}
+
+.grade-row {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-top: var(--s4);
+}
+
+.kbd {
+  font: 600 10px/1 var(--font-mono);
+  color: var(--ink-3);
+  border: 1px solid var(--rule-2);
+  border-radius: 4px;
+  padding: 2px 5px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.button.primary .kbd {
+  color: var(--paper);
+  border-color: color-mix(in srgb, var(--paper) 40%, transparent);
+}
+
+.review-week {
+  margin-top: var(--s2);
+}
+
+.review-week-row {
+  font: 400 var(--t-body) / var(--lh-body) var(--font-serif);
+  color: var(--ink-2);
+  margin: var(--s2) 0 0;
+}
+
+.nav-item {
+  position: relative;
+}
+
+.nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  min-width: 18px;
+  text-align: center;
+  font: 600 10px/18px var(--font-ui);
+  color: var(--paper);
+  background: var(--accent);
+  border-radius: 9px;
+  padding: 0 5px;
+}
