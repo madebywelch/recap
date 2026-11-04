@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import briefSource from "../../fixtures/daily-brief.md?raw";
 import { useExplorer } from "../useExplorer";
-import type { StoreState } from "../store";
+import { loadBriefRun, type StoreState } from "../store";
 import type { Navigate } from "../App";
 import {
   allSignalNames,
@@ -15,7 +15,7 @@ import {
 import type { Candidate, Signal } from "../fixtures";
 import { count, parseEntries, project, signed } from "../brief";
 
-const inBrief = new Set(parseEntries(briefSource).flatMap((e) => e.sources));
+const FIXTURE_IN_BRIEF = new Set(parseEntries(briefSource).flatMap((e) => e.sources));
 
 const TOOLS: ExplorerFilters["tool"][] = ["all", "claude", "codex"];
 
@@ -186,7 +186,7 @@ function Ledger({ c }: { c: Candidate }) {
   );
 }
 
-function Detail({ c, onNavigate }: { c: Candidate; onNavigate: Navigate }) {
+function Detail({ c, inBrief, onNavigate }: { c: Candidate; inBrief: Set<string>; onNavigate: Navigate }) {
   return (
     <div className="xsheet">
       <div className="kicker">
@@ -243,6 +243,25 @@ export default function SignalExplorer({
 }) {
   const { filters, setFilters, visible, selected, select } = useExplorer(store);
   const rowsRef = useRef<HTMLDivElement>(null);
+
+  // "In brief" tags follow the brief the reader actually sees: the latest
+  // live run's sources, or the fixture brief when running on fixtures.
+  const [inBrief, setInBrief] = useState<Set<string>>(FIXTURE_IN_BRIEF);
+  useEffect(() => {
+    if (!store || store.source === "fixture") {
+      setInBrief(FIXTURE_IN_BRIEF);
+      return;
+    }
+    let alive = true;
+    loadBriefRun(store.since)
+      .then((run) => {
+        if (alive) setInBrief(new Set(parseEntries(run?.raw_output ?? "").flatMap((e) => e.sources)));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [store]);
 
   // A cross-link names a candidate: widen the filters until it is listed.
   useEffect(() => {
@@ -330,7 +349,7 @@ export default function SignalExplorer({
       </div>
       <div className="xdetail">
         {selected ? (
-          <Detail c={selected} onNavigate={onNavigate} />
+          <Detail c={selected} inBrief={inBrief} onNavigate={onNavigate} />
         ) : (
           <div className="xsheet">
             <p className="quiet-note">
