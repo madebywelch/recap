@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"strings"
@@ -60,7 +60,8 @@ func TestScorePairSignals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			score, sigs := scorePair(c.user, c.assistant)
+			score, sigList := scorePair(c.user, c.assistant)
+			sigs := signalStrings(sigList)
 			for _, w := range c.want {
 				if !hasSignal(sigs, w) {
 					t.Errorf("missing signal %q in %v", w, sigs)
@@ -101,11 +102,11 @@ func TestScoreAndFilter(t *testing.T) {
 		t.Fatalf("want 3 candidates (dedup + min score), got %d: %+v", len(out), out)
 	}
 	for _, p := range out {
-		if p.Assistant == "Short." {
+		if p.AssistantExcerpt == "Short." {
 			t.Errorf("dedup kept the weaker duplicate")
 		}
 		if len(p.Signals) == 0 {
-			t.Errorf("signals missing on %q", p.User)
+			t.Errorf("signals missing on %q", p.UserMessage)
 		}
 	}
 	// Equal scores order newest first, deterministically.

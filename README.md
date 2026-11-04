@@ -52,7 +52,7 @@ recap --since 2026-04-30        # absolute start date
 recap --tool claude             # only mine Claude Code sessions
 recap --tool codex              # only mine Codex sessions
 recap --inference codex         # force Codex as the inference engine
-recap --raw                     # skip inference, dump scored candidates (with signals) as JSON
+recap --raw                     # skip inference, print the scan envelope (scored candidates, structured signals) as JSON
 recap --top 50                  # send more candidates to inference (default 30)
 recap --no-archive              # don't write the dated markdown file
 recap --timeout 600             # raise inference timeout (default 240s)
@@ -76,7 +76,20 @@ Real run, `recap --days 3`, top of the file:
 >
 > **generate_204 connectivity probe.** `http://www.google.com/generate_204` and `http://connectivitycheck.gstatic.com/generate_204` are tiny endpoints that respond with HTTP 204 No Content and zero bytes — Android, ChromeOS, and embedded Linux hit them to detect captive portals…
 
-A typical run produces 4–6 such entries.
+A typical run produces 4–6 such entries. Each entry ends with a machine-readable `sources: id1,id2` line citing the transcript candidates it drew from — the ids come from the `--raw` JSON, so a concept card can link back to the exchange that triggered it.
+
+### The engine is an importable package
+
+The scan → parse → redact → score pipeline lives in [`engine/`](engine/), importable as `github.com/madebywelch/recap/engine` — the CLI is a thin layer over it, and the planned desktop app runs the same pipeline as a sidecar.
+
+```go
+res, err := engine.Collect(engine.Options{Days: 1, MinScore: -100})
+for _, c := range res.Candidates {
+    fmt.Println(c.ID, c.Score, c.UserScore, c.AssistantBonus, c.Signals)
+}
+```
+
+`--raw` prints the JSON encoding of `engine.Result`. That shape is a versioned client contract, documented in [docs/engine-json.md](docs/engine-json.md), with a committed example fixture in [testdata/engine-v1.json](testdata/engine-v1.json) a UI can develop against without running the engine. Every candidate carries its full reasoning: a structured per-signal breakdown (name, signed weight, user/assistant side), the user-side and assistant-side sums, a stable id that survives rescans, and the redacted excerpts.
 
 ## Configuration
 
@@ -127,7 +140,7 @@ The user side decides whether a pair is a learning moment; the assistant side ca
 | `assistant-thin` | -1 | Reply under 15 words |
 | `assistant-cap` | -N | Clamps the assistant bonus to the user score |
 
-`--raw` prints the signals next to each score, so a surprising rank is diagnosable in one look. To recalibrate, dump a week with `recap --raw --days 7 --min-score -100 --top 0` and read the band around `--min-score`.
+`--raw` prints the full reasoning next to each score — every signal with its side and weight, the user/assistant split, and the total — so a surprising rank is diagnosable in one look (schema: [docs/engine-json.md](docs/engine-json.md)). To recalibrate, dump a week with `recap --raw --days 7 --min-score -100 --top 0` and read the band around `--min-score`.
 
 ## Privacy
 
@@ -147,14 +160,18 @@ The archive directory is a plain markdown file. Nothing is uploaded.
 ## Project layout
 
 ```
-main.go        flag parsing, orchestration, archive
-scan.go        date-windowed walk of session directories
-parse.go       JSONL parsers for both formats; turn pairing; system-injection filters
-redact.go      secret patterns applied to every pair
-score.go       named-signal heuristics, dedup, ranking
+main.go        flag parsing, orchestration, stderr phase events, archive
 inference.go   shell out to claude/codex via stdin
 prompt.go      the system prompt sent to the inference CLI
-*_test.go      fixtures for pairing and scoring
+engine/        the importable pipeline package (engine.Collect / engine.Score)
+  engine.go    Options, scan envelope, version, public API
+  scan.go      date-windowed walk of session directories
+  parse.go     JSONL parsers for both formats; turn pairing; system-injection filters
+  redact.go    secret patterns applied to every pair
+  score.go     named-signal heuristics, stable candidate ids, dedup, ranking
+  *_test.go    fixtures for pairing, scoring, and the JSON contract
+docs/          engine JSON schema (docs/engine-json.md)
+testdata/      committed schema fixture (engine-v1.json)
 ```
 
 Single Go binary, stdlib only. `go test ./...` runs in well under a second.

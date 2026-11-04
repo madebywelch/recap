@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/madebywelch/recap/engine"
 )
 
 func main() {
@@ -25,9 +27,13 @@ func main() {
 	)
 	flag.Parse()
 
-	since, err := resolveSince(*sinceFlag, *days)
-	if err != nil {
-		die("bad --since: %v", err)
+	var since time.Time
+	if *sinceFlag != "" {
+		t, err := time.ParseInLocation("2006-01-02", *sinceFlag, time.Local)
+		if err != nil {
+			die("bad --since: %v", err)
+		}
+		since = t
 	}
 
 	tools := []string{}
@@ -40,35 +46,41 @@ func main() {
 		die("--tool must be claude | codex | both")
 	}
 
-	var allPairs []Pair
-	totalSessions := 0
-	for _, t := range tools {
-		pairs, n, err := collect(t, since)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warn: %s scan failed: %v\n", t, err)
-			continue
-		}
-		totalSessions += n
-		allPairs = append(allPairs, pairs...)
+	res, err := engine.Collect(engine.Options{
+		Days:     *days,
+		Since:    since,
+		Tool:     *toolFlag,
+		MinScore: *minScore,
+		Top:      *topN,
+	})
+	if err != nil {
+		die("%v", err)
 	}
 
-	totalPairs := len(allPairs)
-	candidates := scoreAndFilter(allPairs, *minScore)
-	if *topN > 0 && len(candidates) > *topN {
-		candidates = candidates[:*topN]
+	for _, w := range res.Warnings {
+		fmt.Fprintf(os.Stderr, "warn: %s scan failed: %v\n", w.Tool, w.Err)
 	}
 
 	fmt.Fprintf(os.Stderr, "scanned %d sessions across %s, %d total pairs, %d candidates after scoring\n",
-		totalSessions, strings.Join(tools, "+"), totalPairs, len(candidates))
+		res.Sessions, strings.Join(tools, "+"), res.Pairs, len(res.Candidates))
 
 	if *rawFlag {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(candidates)
+		_ = enc.Encode(res)
 		return
 	}
 
-	if len(candidates) == 0 {
+	// Phase events for the desktop app's progress panel: single-line JSON on
+	// stderr, additive to the human lines (docs/engine-json.md).
+	emitEvent(scanDoneEvent{
+		Event:      "scan_done",
+		Sessions:   res.Sessions,
+		Pairs:      res.Pairs,
+		Candidates: len(res.Candidates),
+	})
+
+	if len(res.Candidates) == 0 {
 		fmt.Fprintln(os.Stderr, "no candidates — nothing to recap")
 		return
 	}
@@ -79,7 +91,13 @@ func main() {
 	}
 	fmt.Fprintf(os.Stderr, "inference: %s (timeout %ds)\n", cli, *timeoutSec)
 
-	prompt := buildPrompt(candidates)
+	emitEvent(inferenceStartEvent{
+		Event:    "inference_start",
+		Cli:      cli,
+		TimeoutS: *timeoutSec,
+	})
+
+	prompt := buildPrompt(res.Candidates)
 	out, err := runInference(cli, prompt, time.Duration(*timeoutSec)*time.Second)
 	if err != nil {
 		die("inference: %v", err)
@@ -88,23 +106,13 @@ func main() {
 	fmt.Println(out)
 
 	if !*noArchive {
-		if err := archive(*archiveDir, since, tools, totalSessions, totalPairs, len(candidates), cli, out); err != nil {
+		if err := archive(*archiveDir, res.Since, tools, res.Sessions, res.Pairs, len(res.Candidates), cli, out); err != nil {
 			fmt.Fprintf(os.Stderr, "warn: archive failed: %v\n", err)
 		}
 	}
 }
 
-func resolveSince(sinceArg string, days int) (time.Time, error) {
-	if sinceArg != "" {
-		t, err := time.ParseInLocation("2006-01-02", sinceArg, time.Local)
-		return t, err
-	}
-	now := time.Now()
-	d := now.AddDate(0, 0, -days)
-	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, now.Location()), nil
-}
-
-func buildPrompt(candidates []Pair) string {
+func buildPrompt(candidates []engine.Candidate) string {
 	body, _ := json.MarshalIndent(candidates, "", "  ")
 	var sb strings.Builder
 	sb.WriteString(systemPrompt)
@@ -112,6 +120,30 @@ func buildPrompt(candidates []Pair) string {
 	sb.Write(body)
 	sb.WriteString("\n--- END CANDIDATES ---\n")
 	return sb.String()
+}
+
+// Phase events the desktop app reads from stderr while it drives generation.
+// Single-line JSON so the app can pick them out of the human-readable lines;
+// it degrades gracefully when they are absent (an older sidecar).
+type scanDoneEvent struct {
+	Event      string `json:"event"`
+	Sessions   int    `json:"sessions"`
+	Pairs      int    `json:"pairs"`
+	Candidates int    `json:"candidates"`
+}
+
+type inferenceStartEvent struct {
+	Event    string `json:"event"`
+	Cli      string `json:"cli"`
+	TimeoutS int    `json:"timeout_s"`
+}
+
+func emitEvent(v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	fmt.Fprintln(os.Stderr, string(b))
 }
 
 func archive(dir string, since time.Time, tools []string, sessions, pairs, candidates int, cli, body string) error {
