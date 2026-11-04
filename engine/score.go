@@ -1,10 +1,13 @@
-package main
+package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Scoring finds moments where the user met something unfamiliar. The user
@@ -74,24 +77,60 @@ var (
 	}
 )
 
-type signal struct {
-	name   string
-	weight int
+// Side names which half of the exchange a signal read: the user message or
+// the assistant reply. It is redundant with the signal name, but explicit
+// for consumers that render the score arithmetic.
+type Side string
+
+const (
+	SideUser      Side = "user"
+	SideAssistant Side = "assistant"
+)
+
+// Signal is one named heuristic that fired on a pair, with the signed weight
+// delta it contributed and the side of the exchange it read.
+type Signal struct {
+	Name   string `json:"name"`
+	Weight int    `json:"weight"`
+	Side   Side   `json:"side"`
+}
+
+// Candidate is a Pair the engine scored as a likely learning moment, with
+// the full reasoning behind its score. The JSON shape is the client
+// contract in docs/engine-json.md: UserScore is the user-side sum (the
+// gate), AssistantBonus the assistant-side sum after the cap, and
+// Score == UserScore + AssistantBonus. SignalStrings renders the same
+// signals in the compact "name:+N" form the CLI has always printed.
+type Candidate struct {
+	ID               string    `json:"id"`
+	Tool             string    `json:"tool"`
+	SessionID        string    `json:"sessionId"`
+	Cwd              string    `json:"cwd,omitempty"`
+	Ts               time.Time `json:"ts"`
+	UserMessage      string    `json:"userMessage"`
+	AssistantExcerpt string    `json:"assistantExcerpt"`
+	Score            int       `json:"score"`
+	UserScore        int       `json:"userScore"`
+	AssistantBonus   int       `json:"assistantBonus"`
+	Signals          []Signal  `json:"signals"`
+	SignalStrings    []string  `json:"signal_strings,omitempty"`
 }
 
 // scorePair returns the score and the named signals that produced it.
-func scorePair(user, assistant string) (int, []string) {
-	var sigs []signal
-	add := func(name string, w int) { sigs = append(sigs, signal{name, w}) }
+func scorePair(user, assistant string) (int, []Signal) {
+	var sigs []Signal
+	add := func(side Side, name string, w int) {
+		sigs = append(sigs, Signal{Name: name, Weight: w, Side: side})
+	}
 
 	u := strings.ToLower(strings.TrimSpace(markerRe.ReplaceAllString(user, " ")))
 	words := strings.Fields(u)
 
 	switch {
 	case slashRe.MatchString(u):
-		add("slash-command", -3)
+		add(SideUser, "slash-command", -3)
 	case isReactive(words):
-		add("reactive", 4)
+		add(SideUser, "reactive", 4)
 	default:
 		wh, question, imperative := false, false, false
 		for i, s := range sentenceRe.FindAllString(u, -1) {
@@ -112,34 +151,34 @@ func scorePair(user, assistant string) (int, []string) {
 			}
 		}
 		if wh {
-			add("wh-question", 3)
+			add(SideUser, "wh-question", 3)
 		}
 		if question {
-			add("question", 1)
+			add(SideUser, "question", 1)
 		}
 		if imperative {
-			add("imperative", -1)
+			add(SideUser, "imperative", -1)
 		}
 		if confusionRe.MatchString(u) {
-			add("confusion", 3)
+			add(SideUser, "confusion", 3)
 		}
 		if errorRe.MatchString(u) {
-			add("error-paste", 2)
+			add(SideUser, "error-paste", 2)
 		}
 		if strings.Contains(user, "[Image #") {
-			add("ui-feedback", -1)
+			add(SideUser, "ui-feedback", -1)
 		}
 		switch {
 		case len(words) > 150:
-			add("long", -2)
+			add(SideUser, "long", -2)
 		case len(words) > 60:
-			add("long", -1)
+			add(SideUser, "long", -1)
 		}
 	}
 
 	userScore := 0
 	for _, s := range sigs {
-		userScore += s.weight
+		userScore += s.Weight
 	}
 
 	if userScore > 0 {
@@ -148,36 +187,85 @@ func scorePair(user, assistant string) (int, []string) {
 		bonus := 0
 		switch {
 		case n < 15:
-			add("assistant-thin", -1)
+			add(SideAssistant, "assistant-thin", -1)
 			bonus--
 		case n >= 200:
-			add("assistant-depth", 2)
+			add(SideAssistant, "assistant-depth", 2)
 			bonus += 2
 		case n >= 80:
-			add("assistant-depth", 1)
+			add(SideAssistant, "assistant-depth", 1)
 			bonus++
 		}
 		if strings.Count(a, "`") >= 2 {
-			add("assistant-code", 1)
+			add(SideAssistant, "assistant-code", 1)
 			bonus++
 		}
 		if len(explainRe.FindAllStringIndex(a, -1)) >= 2 {
-			add("assistant-explains", 1)
+			add(SideAssistant, "assistant-explains", 1)
 			bonus++
 		}
 		// The assistant can at most double a learning moment, never create one.
 		if bonus > userScore {
-			add("assistant-cap", userScore-bonus)
+			add(SideAssistant, "assistant-cap", userScore-bonus)
 		}
 	}
 
 	score := 0
-	names := make([]string, 0, len(sigs))
 	for _, s := range sigs {
-		score += s.weight
-		names = append(names, fmt.Sprintf("%s:%+d", s.name, s.weight))
+		score += s.Weight
 	}
-	return score, names
+	return score, sigs
+}
+
+// signalStrings renders a breakdown in the compact "name:+N" form the CLI
+// and existing consumers expect.
+func signalStrings(sigs []Signal) []string {
+	out := make([]string, 0, len(sigs))
+	for _, s := range sigs {
+		out = append(out, fmt.Sprintf("%s:%+d", s.Name, s.Weight))
+	}
+	return out
+}
+
+// candidateID derives a stable id for a pair: rescanning the same window
+// yields the same id, so consumers can upsert by id instead of duplicating
+// rows. First 16 hex chars of SHA-256 over
+// tool|session|ts-unix-nano|dedupKey(user).
+func candidateID(p Pair) string {
+	h := fmt.Sprintf("%s|%s|%d|%s", p.Tool, p.Session, p.Ts.UnixNano(), dedupKey(p.User))
+	sum := sha256.Sum256([]byte(h))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// newCandidate packages a scored pair for output, splitting the score into
+// its user-side and assistant-side sums so consumers can render the
+// arithmetic without recomputing it.
+func newCandidate(p Pair, score int, sigs []Signal) Candidate {
+	if sigs == nil {
+		sigs = []Signal{}
+	}
+	userScore, assistantBonus := 0, 0
+	for _, s := range sigs {
+		if s.Side == SideUser {
+			userScore += s.Weight
+		} else {
+			assistantBonus += s.Weight
+		}
+	}
+	return Candidate{
+		ID:               candidateID(p),
+		Tool:             p.Tool,
+		SessionID:        p.Session,
+		Cwd:              p.Cwd,
+		Ts:               p.Ts,
+		UserMessage:      p.User,
+		AssistantExcerpt: p.Assistant,
+		Score:            score,
+		UserScore:        userScore,
+		AssistantBonus:   assistantBonus,
+		Signals:          sigs,
+		SignalStrings:    signalStrings(sigs),
+	}
 }
 
 // isReactive matches a whole message that is a bare reaction: "wait", "huh?",
@@ -205,27 +293,28 @@ func firstWord(s string) string {
 // duplicate user messages (forked worktrees and resumed sessions replay the
 // same prompt), truncates for the prompt, and sorts best first. The sort is
 // stable with a timestamp tiebreak so `--top` cuts deterministically.
-func scoreAndFilter(pairs []Pair, minScore int) []Pair {
+func scoreAndFilter(pairs []Pair, minScore int) []Candidate {
 	index := map[string]int{}
-	var out []Pair
+	var out []Candidate
 	for _, p := range pairs {
-		p.Score, p.Signals = scorePair(p.User, p.Assistant)
-		if p.Score < minScore {
+		score, sigs := scorePair(p.User, p.Assistant)
+		if score < minScore {
 			continue
 		}
+		c := newCandidate(p, score, sigs)
 		k := dedupKey(p.User)
 		if i, ok := index[k]; ok {
-			if p.Score > out[i].Score || (p.Score == out[i].Score && len(p.Assistant) > len(out[i].Assistant)) {
-				out[i] = p
+			if c.Score > out[i].Score || (c.Score == out[i].Score && len(c.AssistantExcerpt) > len(out[i].AssistantExcerpt)) {
+				out[i] = c
 			}
 			continue
 		}
 		index[k] = len(out)
-		out = append(out, p)
+		out = append(out, c)
 	}
 	for i := range out {
-		out[i].User = truncate(out[i].User, maxUserChars)
-		out[i].Assistant = truncate(out[i].Assistant, maxAssistantChars)
+		out[i].UserMessage = truncate(out[i].UserMessage, maxUserChars)
+		out[i].AssistantExcerpt = truncate(out[i].AssistantExcerpt, maxAssistantChars)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Score != out[j].Score {

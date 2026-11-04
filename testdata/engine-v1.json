@@ -1,0 +1,170 @@
+{
+  "engineVersion": "1.0.0",
+  "scannedAt": "2026-10-16T16:00:00Z",
+  "since": "2026-10-15",
+  "tools": [
+    "claude",
+    "codex"
+  ],
+  "sessions": 3,
+  "pairs": 5,
+  "candidates": [
+    {
+      "id": "9f8b7ec5976d64e0",
+      "tool": "claude",
+      "sessionId": "3f9c2a1e",
+      "cwd": "/workspace/app",
+      "ts": "2026-10-16T09:00:00Z",
+      "userMessage": "Why does Cloudflare stop at 15 free workers per account?",
+      "assistantExcerpt": "Cloudflare's free plan caps you at 15 workers because each worker is a live isolate the edge keeps warm. The limit is per account, not per zone, which means deleting a worker frees a slot immediately. `wrangler whoami` shows the count, and the rule of thumb is one worker per route when you are near the cap.",
+      "score": 5,
+      "userScore": 3,
+      "assistantBonus": 2,
+      "signals": [
+        {
+          "name": "wh-question",
+          "weight": 3,
+          "side": "user"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-explains",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "wh-question:+3",
+        "assistant-code:+1",
+        "assistant-explains:+1"
+      ]
+    },
+    {
+      "id": "5936b4cca19d4443",
+      "tool": "claude",
+      "sessionId": "b7d4e0c2",
+      "ts": "2026-10-16T11:30:00Z",
+      "userMessage": "i get `traceback (most recent call last): KeyError: 'config'` when i run make, why?",
+      "assistantExcerpt": "The traceback means the dict had no 'config' key; indexing raises KeyError, so use `.get('config')` with a default because config is optional in dev.",
+      "score": 4,
+      "userScore": 3,
+      "assistantBonus": 1,
+      "signals": [
+        {
+          "name": "question",
+          "weight": 1,
+          "side": "user"
+        },
+        {
+          "name": "error-paste",
+          "weight": 2,
+          "side": "user"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "question:+1",
+        "error-paste:+2",
+        "assistant-code:+1"
+      ]
+    },
+    {
+      "id": "bfe090b3c3ae6b69",
+      "tool": "codex",
+      "sessionId": "rollout-2026-10-16",
+      "cwd": "/workspace/firmware",
+      "ts": "2026-10-16T14:05:00Z",
+      "userMessage": "wait what?",
+      "assistantExcerpt": "The second branch fires.",
+      "score": 3,
+      "userScore": 4,
+      "assistantBonus": -1,
+      "signals": [
+        {
+          "name": "reactive",
+          "weight": 4,
+          "side": "user"
+        },
+        {
+          "name": "assistant-thin",
+          "weight": -1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "reactive:+4",
+        "assistant-thin:-1"
+      ]
+    },
+    {
+      "id": "236c98ca2a509ecb",
+      "tool": "codex",
+      "sessionId": "rollout-2026-10-16",
+      "cwd": "/workspace/firmware",
+      "ts": "2026-10-16T15:00:00Z",
+      "userMessage": "Is the rollback automatic after a failed canary?",
+      "assistantExcerpt": "Canary deploys are gated by the rollout controller: it watches the canary's error rate for ten minutes, and promotes only when the budget holds. This is automatic for `canaryThreshold: 1` because the controller flips the label when the canary exceeds 5% errors, which means a failed canary rolls back without a human. The rule of thumb is to keep `canaryThreshold` low and let the controller work.",
+      "score": 2,
+      "userScore": 1,
+      "assistantBonus": 1,
+      "signals": [
+        {
+          "name": "question",
+          "weight": 1,
+          "side": "user"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-explains",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-cap",
+          "weight": -1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "question:+1",
+        "assistant-code:+1",
+        "assistant-explains:+1",
+        "assistant-cap:-1"
+      ]
+    },
+    {
+      "id": "7b3943d4efd4d16f",
+      "tool": "codex",
+      "sessionId": "rollout-2026-10-16",
+      "cwd": "/workspace/firmware",
+      "ts": "2026-10-16T15:30:00Z",
+      "userMessage": "deploy it",
+      "assistantExcerpt": "Deployed to production.",
+      "score": -1,
+      "userScore": -1,
+      "assistantBonus": 0,
+      "signals": [
+        {
+          "name": "imperative",
+          "weight": -1,
+          "side": "user"
+        }
+      ],
+      "signal_strings": [
+        "imperative:-1"
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"bufio"
@@ -11,15 +11,14 @@ import (
 )
 
 // Pair is one real user message plus the assistant text that answered it.
+// The texts are redacted; scoring them is a separate step (see Score).
 type Pair struct {
-	Tool      string    `json:"tool"`
-	Session   string    `json:"session"`
-	Cwd       string    `json:"cwd,omitempty"`
-	Ts        time.Time `json:"ts"`
-	User      string    `json:"user"`
-	Assistant string    `json:"assistant_excerpt"`
-	Score     int       `json:"score"`
-	Signals   []string  `json:"signals,omitempty"`
+	Tool      string
+	Session   string
+	Cwd       string
+	Ts        time.Time
+	User      string
+	Assistant string
 }
 
 // pairer turns an ordered stream of user and assistant texts into Pairs.
@@ -303,7 +302,7 @@ func codexBlockText(blocks []claudeBlock) string {
 
 // --- shared collector -----------------------------------------------------
 
-func collect(tool string, since time.Time) ([]Pair, int, error) {
+func collectTool(tool string, since time.Time) ([]Pair, int, error) {
 	var paths []string
 	var err error
 	switch tool {
