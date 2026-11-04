@@ -354,6 +354,48 @@ fn cancel_generation(state: tauri::State<'_, GenState>) {
 
 // --- scanning ---------------------------------------------------------------
 
+/// One archive file for the Library's first-run import: the spec's shared
+/// archive dir (~/.claude/morning-recap) holds recap-*.md files written by
+/// both the CLI and this app; the frontend parses them with the same brief
+/// parser generation uses.
+#[derive(serde::Serialize)]
+struct ArchiveFile {
+    name: String,
+    path: String,
+    content: String,
+}
+
+#[tauri::command]
+async fn read_archives(app: tauri::AppHandle) -> Result<Vec<ArchiveFile>, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("could not resolve the home directory: {e}"))?;
+    let dir = home.join(".claude").join("morning-recap");
+    let mut files = Vec::new();
+    // A missing dir just means no history yet — not an error.
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(files),
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("recap-") || !name.ends_with(".md") {
+            continue;
+        }
+        let path = entry.path();
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+        files.push(ArchiveFile {
+            name,
+            path: path.display().to_string(),
+            content,
+        });
+    }
+    files.sort_by(|a, b| b.name.cmp(&a.name));
+    Ok(files)
+}
+
 /// Spawns the bundled recap sidecar and returns its stdout: the versioned
 /// scan envelope as JSON. Validation of that payload happens in the
 /// frontend, next to the client types it must agree with.
@@ -398,7 +440,8 @@ fn main() {
             set_settings,
             detect_inference,
             generate_brief,
-            cancel_generation
+            cancel_generation,
+            read_archives
         ])
         .build(tauri::generate_context!())
         .expect("error while building the recap app");

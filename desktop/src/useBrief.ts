@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { homeDir } from "@tauri-apps/api/path";
-import { parseEntries, type BriefEntry } from "./brief";
+import { localDate, parseEntries, type BriefEntry } from "./brief";
 import { brief as fixtureBrief, type Candidate } from "./fixtures";
 import fixtureBriefSource from "../fixtures/daily-brief.md?raw";
 import {
@@ -45,25 +45,15 @@ function timeOfDay(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-/** Local YYYY-MM-DD, the way the engine dates archive files. */
-function localDate(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 function localArchivePath(home: string): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const base = home.endsWith("/") ? home : `${home}/`;
-  return `${base}.claude/morning-recap/recap-${date}.md`;
+  return `${base}.claude/morning-recap/recap-${localDate(new Date())}.md`;
 }
 
 function runToView(run: BriefRecord, store: StoreState): BriefView {
   return {
     entries: parseEntries(run.raw_output),
-    date: run.started_at ? localDate(run.started_at) : store.since,
+    date: run.started_at ? localDate(new Date(run.started_at)) : store.since,
     since: run.since,
     tools: "claude + codex",
     sessions: store.sessions,
@@ -165,6 +155,7 @@ export function useBrief(store: StoreState | null) {
       await recordGeneration({
         startedAt,
         finishedAt,
+        date: localDate(new Date()),
         since: store.since,
         tools: "claude+codex",
         sessions: store.sessions,

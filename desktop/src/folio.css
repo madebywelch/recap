@@ -1292,3 +1292,41 @@ code {
   overflow-wrap: anywhere;
 }
 
+
+/* --- M4: Concept Library — search, shelf rows that open, the reader --- */
+
+.library-search {
+  margin: var(--s5) 0 var(--s3);
+  max-width: 34ch;
+}
+
+.library-count {
+  font: 400 var(--t-meta) / 1.4 var(--font-mono);
+  color: var(--ink-3);
+  margin: 0 0 var(--s4);
+}
+
+.shelf-row.is-link {
+  cursor: pointer;
+}
+
+.shelf-row.is-link:hover .shelf-title {
+  color: var(--accent);
+}
+
+.shelf-row .tag {
+  font: 600 10px/1.6 var(--font-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.reader-body {
+  max-width: var(--measure);
+}
+
+.reader-meta {
+  font: 400 var(--t-meta) / 1.5 var(--font-ui);
+  color: var(--ink-2);
+  margin: var(--s5) 0 0;
+}

@@ -6,6 +6,7 @@ import {
   type ScanResult,
   type Signal,
 } from "./fixtures";
+import { parseArchiveMeta, parseEntries, type BriefEntry } from "./brief";
 import fixtureScanSource from "../fixtures/engine-scan.json";
 
 /**
@@ -49,6 +50,8 @@ export interface BriefRecord {
 export interface GenerationRecord {
   startedAt: string;
   finishedAt: string;
+  /** The brief's local date, YYYY-MM-DD — the day its concepts belong to. */
+  date: string;
   since: string;
   tools: string;
   sessions: number;
@@ -59,13 +62,31 @@ export interface GenerationRecord {
   rawOutput: string;
 }
 
+/** One concept as the Library reads it (the spec's concepts table, joined
+ *  with its review row when one exists). */
+export interface Concept {
+  id: number;
+  date: string;
+  title: string;
+  body: string;
+  /** Source candidate ids; null when the brief omitted the sources line. */
+  sourceIds: string[] | null;
+  /** The review row, when the concept is seeded. */
+  review: {
+    dueOn: string;
+    reviews: number;
+    lapses: number;
+    lastGrade: string | null;
+  } | null;
+}
+
 const DB_NAME = "sqlite:recap.db";
 
 const inTauri = () =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-// docs/desktop-app-spec.md §App storage. concepts / review_state / FTS are
-// created by their own milestones; a scan run needs runs + candidates only.
+// docs/desktop-app-spec.md §App storage. A scan run needs runs +
+// candidates; M4 adds the concept tables with their FTS index.
 const CREATE_RUNS = `
   CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
@@ -92,6 +113,56 @@ const CREATE_CANDIDATES = `
     assistant_bonus INTEGER NOT NULL,
     signals TEXT NOT NULL
   )`;
+
+// docs/desktop-app-spec.md §App storage — the M4 tables. concepts_fts is
+// an external-content index over concepts, kept in sync by triggers so the
+// Library's search can never drift from what the rows hold.
+const CREATE_CONCEPTS = `
+  CREATE TABLE IF NOT EXISTS concepts (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES runs(id),
+    date TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    source_candidate_ids TEXT
+  )`;
+
+const CREATE_REVIEW_STATE = `
+  CREATE TABLE IF NOT EXISTS review_state (
+    concept_id INTEGER PRIMARY KEY REFERENCES concepts(id),
+    due_on TEXT NOT NULL,
+    interval_days REAL NOT NULL DEFAULT 1,
+    ease REAL NOT NULL DEFAULT 2.5,
+    reviews INTEGER NOT NULL DEFAULT 0,
+    lapses INTEGER NOT NULL DEFAULT 0,
+    last_grade TEXT,
+    last_reviewed_at TEXT
+  )`;
+
+const CREATE_CONCEPTS_FTS = `
+  CREATE VIRTUAL TABLE IF NOT EXISTS concepts_fts USING fts5(
+    title, body, content='concepts', content_rowid='id'
+  )`;
+
+const CONCEPT_FTS_TRIGGERS = `
+  CREATE TRIGGER IF NOT EXISTS concepts_ai AFTER INSERT ON concepts BEGIN
+    INSERT INTO concepts_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+  END;
+  CREATE TRIGGER IF NOT EXISTS concepts_ad AFTER DELETE ON concepts BEGIN
+    INSERT INTO concepts_fts(concepts_fts, rowid, title, body)
+      VALUES ('delete', old.id, old.title, old.body);
+  END;
+  CREATE TRIGGER IF NOT EXISTS concepts_au AFTER UPDATE ON concepts BEGIN
+    INSERT INTO concepts_fts(concepts_fts, rowid, title, body)
+      VALUES ('delete', old.id, old.title, old.body);
+    INSERT INTO concepts_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+  END`;
+
+// Regenerating a day rewrites its archive file, so a (date, title) pair is
+// the natural key: the upsert replaces the day's explainer instead of
+// stacking a duplicate row.
+const CREATE_CONCEPTS_KEY = `
+  CREATE UNIQUE INDEX IF NOT EXISTS concepts_day_title ON concepts(date, title)`;
 
 interface CandidateRow {
   id: string;
@@ -203,9 +274,17 @@ export async function initStore(): Promise<StoreState> {
     db = await Database.load(DB_NAME);
     await db.execute(CREATE_RUNS);
     await db.execute(CREATE_CANDIDATES);
+    await db.execute(CREATE_CONCEPTS);
+    await db.execute(CREATE_REVIEW_STATE);
+    await db.execute(CREATE_CONCEPTS_FTS);
+    await db.execute(CONCEPT_FTS_TRIGGERS);
+    await db.execute(CREATE_CONCEPTS_KEY);
     const raw = await invoke<string>("run_scan");
     const scan = validateScanResult(JSON.parse(raw));
     await ingest(scan);
+    // Idempotent: an already-recorded file (its run row exists) is skipped,
+    // so relaunching with the same history adds nothing.
+    await importArchives().catch(() => undefined);
     const candidates = await loadCandidates();
     return {
       source: "live",
@@ -236,10 +315,11 @@ export async function loadBriefRun(since: string): Promise<BriefRecord | null> {
 
 /** Records a finished generation run — post-hoc, so a crash mid-run never
  *  leaves a stale "generating" row behind (the live progress panel holds
- *  in-flight state, not the store). */
+ *  in-flight state, not the store) — and its concepts, upserted by
+ *  (date, title) so regenerating the day replaces instead of stacking. */
 export async function recordGeneration(rec: GenerationRecord): Promise<void> {
   if (!db) return;
-  await db.execute(
+  const run = await db.execute(
     `INSERT INTO runs
        (started_at, finished_at, since, tools, sessions, pairs, status, inference_cli, archive_path, raw_output)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -256,4 +336,173 @@ export async function recordGeneration(rec: GenerationRecord): Promise<void> {
       rec.rawOutput,
     ],
   );
+  if (rec.status === "done" && run.lastInsertId !== undefined) {
+    await upsertConcepts(run.lastInsertId, rec.date, parseEntries(rec.rawOutput));
+  }
+}
+
+/** One archive file as the shell reads it for the first-run import. */
+interface ArchiveFile {
+  name: string;
+  path: string;
+  content: string;
+}
+
+/** The first-run import: every recap-*.md in the shared archive dir
+ *  (~/.claude/morning-recap) parsed with the same entry parser as
+ *  generation, one run row per file. Files the app itself recorded — their
+ *  run row already carries archive_path — are skipped, and a relaunch
+ *  finds the rows it wrote and skips them again. */
+export async function importArchives(): Promise<number> {
+  if (!db) return 0;
+  const files = await invoke<ArchiveFile[]>("read_archives");
+  let imported = 0;
+  for (const file of files) {
+    const entries = parseEntries(file.content);
+    if (entries.length === 0) continue;
+    const known = await db.select<{ n: number }[]>(
+      `SELECT COUNT(*) AS n FROM runs WHERE archive_path = $1`,
+      [file.path],
+    );
+    if ((known[0]?.n ?? 0) > 0) continue;
+    const meta = parseArchiveMeta(file.content);
+    const date =
+      file.name.match(/^recap-(\d{4}-\d{2}-\d{2})\.md$/)?.[1] ?? meta?.generatedAt.slice(0, 10) ?? "";
+    if (!date) continue;
+    const run = await db.execute(
+      `INSERT INTO runs
+         (started_at, finished_at, since, tools, sessions, pairs, status, inference_cli, archive_path, raw_output)
+       VALUES ($1, $1, $2, $3, $4, $5, 'done', $6, $7, $8)`,
+      [
+        meta ? meta.generatedAt.replace(" ", "T") + ":00" : `${date}T00:00:00`,
+        meta?.since ?? date,
+        meta?.tools ?? "unknown",
+        meta?.sessions ?? null,
+        meta?.pairs ?? null,
+        meta?.inference ?? null,
+        file.path,
+        file.content,
+      ],
+    );
+    if (run.lastInsertId === undefined) continue;
+    await upsertConcepts(run.lastInsertId, date, entries);
+    imported += 1;
+  }
+  return imported;
+}
+
+function upsertConcepts(runId: number, date: string, entries: BriefEntry[]): Promise<void> {
+  const insert = async (e: BriefEntry) => {
+    await db!.execute(
+      `INSERT INTO concepts (run_id, date, title, body, source_candidate_ids)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT(date, title) DO UPDATE SET
+         run_id = excluded.run_id, body = excluded.body,
+         source_candidate_ids = excluded.source_candidate_ids`,
+      [runId, date, e.title, e.body, e.sources.length ? JSON.stringify(e.sources) : null],
+    );
+  };
+  let chain = Promise.resolve();
+  for (const e of entries) chain = chain.then(() => insert(e));
+  return chain;
+}
+
+interface ConceptRow {
+  id: number;
+  date: string;
+  title: string;
+  body: string;
+  source_candidate_ids: string | null;
+  due_on: string | null;
+  reviews: number | null;
+  lapses: number | null;
+  last_grade: string | null;
+}
+
+function toConcept(r: ConceptRow): Concept {
+  return {
+    id: r.id,
+    date: r.date,
+    title: r.title,
+    body: r.body,
+    sourceIds: r.source_candidate_ids ? (JSON.parse(r.source_candidate_ids) as string[]) : null,
+    review: r.due_on === null ? null : {
+      dueOn: r.due_on,
+      reviews: r.reviews ?? 0,
+      lapses: r.lapses ?? 0,
+      lastGrade: r.last_grade,
+    },
+  };
+}
+
+const CONCEPT_COLUMNS = `c.id, c.date, c.title, c.body, c.source_candidate_ids,
+  r.due_on, r.reviews, r.lapses, r.last_grade`;
+
+/** The Library's list: with a query, FTS over titles and bodies ranked by
+ *  bm25; without, every concept newest first. */
+export async function loadConcepts(query: string): Promise<Concept[]> {
+  if (!db) return [];
+  const trimmed = query.trim();
+  if (!trimmed) {
+    const rows = await db.select<ConceptRow[]>(
+      `SELECT ${CONCEPT_COLUMNS} FROM concepts c
+       LEFT JOIN review_state r ON r.concept_id = c.id
+       ORDER BY c.date DESC, c.id ASC`,
+    );
+    return rows.map(toConcept);
+  }
+  const match = trimmed
+    .split(/\s+/)
+    .map((t) => `"${t.replace(/"/g, '""')}"`)
+    .join(" ");
+  const rows = await db.select<ConceptRow[]>(
+    `SELECT ${CONCEPT_COLUMNS} FROM concepts_fts f
+     JOIN concepts c ON c.id = f.rowid
+     LEFT JOIN review_state r ON r.concept_id = c.id
+     WHERE concepts_fts MATCH $1
+     ORDER BY rank, c.date DESC`,
+    [match],
+  );
+  return rows.map(toConcept);
+}
+
+/** Seeds a concept into review, due tomorrow — the spec's first interval. */
+export async function seedReview(conceptId: number, dueOn: string): Promise<void> {
+  if (!db) return;
+  await db.execute(
+    `INSERT INTO review_state (concept_id, due_on) VALUES ($1, $2)
+     ON CONFLICT(concept_id) DO UPDATE SET due_on = excluded.due_on`,
+    [conceptId, dueOn],
+  );
+}
+
+/** Removes a concept from review; its grade history goes with it. */
+export async function unseedReview(conceptId: number): Promise<void> {
+  if (!db) return;
+  await db.execute(`DELETE FROM review_state WHERE concept_id = $1`, [conceptId]);
+}
+
+/** The exchanges behind a concept's sources, for the reader's expand. */
+export async function loadCandidatesByIds(ids: string[]): Promise<Candidate[]> {
+  if (!db || ids.length === 0) return [];
+  const rows = await db.select<CandidateRow[]>(
+    `SELECT id, tool, session, cwd, ts, user_message, assistant_excerpt,
+            score, user_score, assistant_bonus, signals
+     FROM candidates WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(", ")})
+     ORDER BY score DESC`,
+    ids,
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    tool: r.tool as Candidate["tool"],
+    sessionId: r.session,
+    cwd: r.cwd ?? undefined,
+    ts: r.ts,
+    userMessage: r.user_message,
+    assistantExcerpt: r.assistant_excerpt,
+    score: r.score,
+    userScore: r.user_score,
+    assistantBonus: r.assistant_bonus,
+    signals: JSON.parse(r.signals) as Signal[],
+  }));
 }

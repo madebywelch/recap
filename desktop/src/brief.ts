@@ -15,6 +15,10 @@ export interface BriefEntry {
   rest: string;
   rule: string;
   sources: string[];
+  /** The full explainer paragraph as the archive holds it — title and
+   *  sources line stripped, the rule of thumb inline. The Library stores
+   *  this verbatim as the concept body. */
+  body: string;
 }
 
 const ENTRY_RE = /^\*\*(.+?)\*\*\s+([\s\S]+)$/;
@@ -61,9 +65,51 @@ export function parseEntries(raw: string): BriefEntry[] {
           rest: text.slice(lede.length).trim(),
           rule: rule.replace(/^([^A-Za-z]*)([a-z])/, (_, pre: string, ch: string) => pre + ch.toUpperCase()),
           sources,
+          body: m[2].trim(),
         },
       ];
     });
+}
+
+/** The header every engine-written archive carries (main.go's archive()):
+ *  a `# Recap <timestamp>` line, a blank line, then the `_window: ..._`
+ *  facts line. Lenient for the Library's first-run import: an older or
+ *  hand-edited file without the header parses to null. */
+export interface ArchiveMeta {
+  /** When the archive was written, "YYYY-MM-DD HH:MM" local. */
+  generatedAt: string;
+  since: string;
+  tools: string;
+  sessions: number;
+  pairs: number;
+  candidates: number;
+  inference: string;
+}
+
+const WINDOW_LINE_RE =
+  /^_window: since (\S+) \| tools: (\S+) \| sessions: (\d+) \| pairs: (\d+) \| candidates: (\d+) \| inference: (\S+)_/;
+
+export function parseArchiveMeta(raw: string): ArchiveMeta | null {
+  const lines = raw.split("\n");
+  if (!lines[0].startsWith("# Recap ")) return null;
+  const m = lines[2].match(WINDOW_LINE_RE);
+  if (!m) return null;
+  return {
+    generatedAt: lines[0].slice("# Recap ".length).trim(),
+    since: m[1],
+    tools: m[2],
+    sessions: parseInt(m[3], 10),
+    pairs: parseInt(m[4], 10),
+    candidates: parseInt(m[5], 10),
+    inference: m[6],
+  };
+}
+
+/** Local YYYY-MM-DD — the way the engine dates archive files and review
+ *  due days. */
+export function localDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /** Inline markdown (code spans, emphasis) to HTML for one line of text. */
