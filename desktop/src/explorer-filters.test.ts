@@ -7,6 +7,7 @@ import {
   applyFilters,
   assistantSignals,
   cappedAt,
+  rawAssistantBonus,
   scoreBounds,
   userSignals,
   type ExplorerFilters,
@@ -104,6 +105,13 @@ describe("arithmetic helpers", () => {
   it("reports the cap only when assistant-cap fired", () => {
     expect(cappedAt(capped)).toBe(1);
     expect(scan.candidates.some((c) => cappedAt(c) !== null)).toBe(false);
+  });
+
+  it("reports the raw bonus the cap clamped", () => {
+    expect(rawAssistantBonus(capped)).toBe(4);
+    const cap = capped.signals.find((s) => s.name === "assistant-cap")!;
+    expect(rawAssistantBonus(capped) + cap.weight).toBe(capped.assistantBonus);
+    for (const c of scan.candidates) expect(rawAssistantBonus(c)).toBe(c.assistantBonus);
   });
 
   it("keeps the capped candidate's arithmetic consistent", () => {

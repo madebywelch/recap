@@ -2,6 +2,7 @@ import { useState } from "react";
 import briefSource from "../../fixtures/daily-brief.md?raw";
 import { brief, candidates, type Candidate } from "../fixtures";
 import { clock, count, inline, leadOf, parseEntries, project, readMinutes, signed, type BriefEntry } from "../brief";
+import type { Navigate } from "../App";
 
 const entries = parseEntries(briefSource);
 const byId = new Map(candidates.map((c) => [c.id, c]));
@@ -40,7 +41,19 @@ function Exchange({ c }: { c: Candidate }) {
   );
 }
 
-function Entry({ entry, index, level, onLevel }: { entry: BriefEntry; index: number; level: Level; onLevel: (l: Level) => void }) {
+function Entry({
+  entry,
+  index,
+  level,
+  onLevel,
+  onNavigate,
+}: {
+  entry: BriefEntry;
+  index: number;
+  level: Level;
+  onLevel: (l: Level) => void;
+  onNavigate: Navigate;
+}) {
   const sources = entry.sources.map((id) => byId.get(id)).filter((c): c is Candidate => !!c);
   const [primary, ...others] = sources;
   const lead = primary ? leadOf(primary) : null;
@@ -110,6 +123,9 @@ function Entry({ entry, index, level, onLevel }: { entry: BriefEntry; index: num
                 {others.map((o) => `“${leadOf(o).text}”`).join(", ")}
               </p>
             )}
+            <button className="link" onClick={() => onNavigate("signals", primary.id)}>
+              Open in Signal Explorer →
+            </button>
           </section>
         )}
       </div>
@@ -117,7 +133,7 @@ function Entry({ entry, index, level, onLevel }: { entry: BriefEntry; index: num
   );
 }
 
-function Done({ onBack }: { onBack: () => void }) {
+function Done({ onBack, onNavigate }: { onBack: () => void; onNavigate: Navigate }) {
   const date = briefDate();
   const today = (date.getDay() + 6) % 7;
   return (
@@ -158,12 +174,15 @@ function Done({ onBack }: { onBack: () => void }) {
         <button className="button" onClick={onBack}>
           Back to the brief
         </button>
+        <button className="link" onClick={() => onNavigate("library")}>
+          Kept in your Concept Library →
+        </button>
       </div>
     </div>
   );
 }
 
-export default function DailyBrief() {
+export default function DailyBrief({ onNavigate }: { onNavigate: Navigate }) {
   const [levels, setLevels] = useState<Level[]>(() => entries.map(() => 0));
   const [done, setDone] = useState(false);
   const { meta } = brief;
@@ -172,7 +191,7 @@ export default function DailyBrief() {
   if (done)
     return (
       <div className="folio-scroll">
-        <Done onBack={() => setDone(false)} />
+        <Done onBack={() => setDone(false)} onNavigate={onNavigate} />
       </div>
     );
 
@@ -213,14 +232,17 @@ export default function DailyBrief() {
             index={i}
             level={levels[i]}
             onLevel={(l) => setLevels((prev) => prev.map((v, j) => (j === i ? l : v)))}
+            onNavigate={onNavigate}
           />
         ))}
 
         <div className="brief-end">
           {belowCut > 0 && (
             <p className="quiet-note">
-              {count(belowCut, "more candidate", true)} from today scored below the cut. They're in
-              the Signal Explorer.
+              {count(belowCut, "more candidate", true)} from today scored below the cut.{" "}
+              <button className="link" onClick={() => onNavigate("signals")}>
+                More from today in the Explorer →
+              </button>
             </p>
           )}
           <button className="button primary" onClick={() => setDone(true)}>
