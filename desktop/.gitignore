@@ -1,0 +1,10 @@
+# frontend
+node_modules/
+dist/
+
+# tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# sidecar binaries built locally; see src-tauri/binaries/README.md
+src-tauri/binaries/recap-*
