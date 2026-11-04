@@ -91,6 +91,14 @@ The check-in that makes the brief stick: active recall over what's due, graded i
 
 The macOS build — aarch64-apple-darwin, the primary target — is produced by [`/.github/workflows/release.yml`](../.github/workflows/release.yml). Run it manually (workflow_dispatch) and the dmg lands as a run artifact; push a `v*` tag and it also publishes a GitHub Release with the dmg attached. The workflow is the only place the macOS bundle is built: a Linux dev box cross-compiles the sidecar but never the app.
 
+### Releasing
+
+1. Bump `version` in [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json) and [package.json](package.json) — they should match.
+2. Tag the release commit `v*` (e.g. `v0.1.1`) and push the tag.
+3. The workflow builds the dmg and publishes the GitHub Release with it attached.
+
+A manual dispatch never publishes — it only uploads the run artifact — so a release goes out only when a tag is pushed.
+
 **The build is unsigned by default.** The workflow needs no credentials to run and sends nothing to Apple; the bundle is ad-hoc signed instead (`signingIdentity: "-"` in tauri.conf.json), so its seal is valid without an Apple identity. On first open, Gatekeeper still stops an unidentified developer — but on current macOS the working paths are System Settings → Privacy & Security → Open Anyway, or clearing the quarantine flag outright:
 
 ```sh

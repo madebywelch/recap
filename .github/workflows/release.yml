@@ -17,6 +17,12 @@ on:
 jobs:
   macos:
     runs-on: macos-14
+    # softprops/action-gh-release creates the GitHub Release and attaches
+    # the dmg on a v* tag; the default GITHUB_TOKEN is read-only, which
+    # failed the first tagged run with 403 "Resource not accessible by
+    # integration". Job-scoped, so nothing else the workflow does needs it.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
