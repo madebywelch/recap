@@ -91,17 +91,23 @@ The check-in that makes the brief stick: active recall over what's due, graded i
 
 The macOS build — aarch64-apple-darwin, the primary target — is produced by [`/.github/workflows/release.yml`](../.github/workflows/release.yml). Run it manually (workflow_dispatch) and the dmg lands as a run artifact; push a `v*` tag and it also publishes a GitHub Release with the dmg attached. The workflow is the only place the macOS bundle is built: a Linux dev box cross-compiles the sidecar but never the app.
 
-**The build is unsigned by default.** The workflow needs no credentials to run and sends nothing to Apple. On first open, Gatekeeper will warn about an unidentified developer — right-click the app and choose Open (or System Settings → Privacy & Security → Open Anyway). That is the expected behavior for an unsigned build, not a malfunction.
+**The build is unsigned by default.** The workflow needs no credentials to run and sends nothing to Apple; the bundle is ad-hoc signed instead (`signingIdentity: "-"` in tauri.conf.json), so its seal is valid without an Apple identity. On first open, Gatekeeper still stops an unidentified developer — but on current macOS the working paths are System Settings → Privacy & Security → Open Anyway, or clearing the quarantine flag outright:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Recap.app
+```
+
+Right-click → Open no longer bypasses Gatekeeper on recent macOS, and a quarantined bundle with a broken signature reads as "damaged" rather than "unidentified" — which is why the release workflow fails the job unless `codesign --verify --deep --strict` passes on the whole bundle, sidecar included.
 
 ### Signing and notarization
 
-Tauri reads Apple credentials from the environment, and the release workflow passes through exactly the non-empty `APPLE_*` repository secrets — so signing and notarization turn themselves on when the secrets exist and stay off when they don't:
+Tauri reads Apple credentials from the environment, and the release workflow passes through exactly the non-empty `APPLE_*` repository secrets — so real signing and notarization turn themselves on when the secrets exist, and the build stays ad-hoc signed when they don't:
 
 | Secret | What it is |
 | --- | --- |
 | `APPLE_CERTIFICATE` | The signing certificate as base64 of the `.p12` file: `openssl base64 -A -in Cert.p12 -out cert-base64.txt` |
 | `APPLE_CERTIFICATE_PASSWORD` | The password used when exporting that `.p12` |
-| `APPLE_SIGNING_IDENTITY` | The identity to sign with, e.g. `Developer ID Application: Your Name (TEAMID)`; inferred from the certificate when unset |
+| `APPLE_SIGNING_IDENTITY` | The identity to sign with, e.g. `Developer ID Application: Your Name (TEAMID)`; replaces the config's ad-hoc default when set |
 | `APPLE_ID` | The Apple ID that notarizes |
 | `APPLE_PASSWORD` | An app-specific password for that Apple ID |
 | `APPLE_TEAM_ID` | The team the certificate belongs to |
