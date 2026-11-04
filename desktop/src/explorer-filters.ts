@@ -77,6 +77,14 @@ export function assistantSignals(c: Candidate): Signal[] {
   return c.signals.filter((s) => s.side === "assistant");
 }
 
+/** The assistant bonus before the cap: every assistant signal except
+ *  assistant-cap. Adding the cap's (negative) weight lands the bonus. */
+export function rawAssistantBonus(c: Candidate): number {
+  return assistantSignals(c)
+    .filter((s) => s.name !== "assistant-cap")
+    .reduce((sum, s) => sum + s.weight, 0);
+}
+
 /**
  * The user score the assistant bonus was clamped to when the cap fired,
  * null when it didn't. The engine emits the assistant-cap signal (a

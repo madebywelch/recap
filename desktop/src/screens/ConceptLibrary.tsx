@@ -1,12 +1,13 @@
 import briefSource from "../../fixtures/daily-brief.md?raw";
 import { brief } from "../fixtures";
 import { inline, parseEntries } from "../brief";
+import type { Navigate } from "../App";
 
 const entries = parseEntries(briefSource);
 
 /** Designed first-run state: the reader and search arrive with M4, so the
  * shelf shows what today's brief will add rather than an empty box. */
-export default function ConceptLibrary() {
+export default function ConceptLibrary({ onNavigate }: { onNavigate: Navigate }) {
   const date = new Date(brief.meta.generatedAt.replace(" ", "T"));
   return (
     <div className="folio-scroll">
@@ -26,6 +27,11 @@ export default function ConceptLibrary() {
             <div key={e.title} className="shelf-row">
               <span className="shelf-title" dangerouslySetInnerHTML={{ __html: inline(e.title) }} />
               <span className="shelf-lede" dangerouslySetInnerHTML={{ __html: inline(e.lede) }} />
+              {e.sources.length > 0 && (
+                <button className="link shelf-link" onClick={() => onNavigate("signals", e.sources[0])}>
+                  The exchange behind it →
+                </button>
+              )}
             </div>
           ))}
         </div>

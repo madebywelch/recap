@@ -13,6 +13,7 @@ import {
 import { useBrief, type BriefView } from "../useBrief";
 import type { StoreState } from "../store";
 import type { GenerationError, PhaseEvent } from "../generation";
+import type { Navigate } from "../App";
 
 /** Disclosure depth of one card: collapsed, explainer, source exchange. */
 type Level = 0 | 1 | 2;
@@ -47,12 +48,14 @@ function Entry({
   level,
   byId,
   onLevel,
+  onNavigate,
 }: {
   entry: BriefEntry;
   index: number;
   level: Level;
   byId: Map<string, Candidate>;
   onLevel: (l: Level) => void;
+  onNavigate: Navigate;
 }) {
   const sources = entry.sources.map((id) => byId.get(id)).filter((c): c is Candidate => !!c);
   const [primary, ...others] = sources;
@@ -123,6 +126,9 @@ function Entry({
                 {others.map((o) => `“${leadOf(o).text}”`).join(", ")}
               </p>
             )}
+            <button className="link" onClick={() => onNavigate("signals", primary.id)}>
+              Open in Signal Explorer →
+            </button>
           </section>
         )}
       </div>
@@ -157,7 +163,7 @@ function Facts({ view }: { view: BriefView }) {
   );
 }
 
-function Done({ view, onBack }: { view: BriefView; onBack: () => void }) {
+function Done({ view, onBack, onNavigate }: { view: BriefView; onBack: () => void; onNavigate: Navigate }) {
   const entries = view.entries;
   const date = new Date(view.date + "T00:00");
   const today = (date.getDay() + 6) % 7;
@@ -199,6 +205,9 @@ function Done({ view, onBack }: { view: BriefView; onBack: () => void }) {
       <div className="closing">
         <button className="button" onClick={onBack}>
           Back to the brief
+        </button>
+        <button className="link" onClick={() => onNavigate("library")}>
+          Kept in your Concept Library →
         </button>
       </div>
     </div>
@@ -295,7 +304,7 @@ function ScanningSheet() {
   );
 }
 
-export default function DailyBrief({ store }: { store: StoreState | null }) {
+export default function DailyBrief({ store, onNavigate }: { store: StoreState | null; onNavigate: Navigate }) {
   const { status, view, error, phase, elapsed, detection, generate, cancel, dismissError } = useBrief(store);
   const [levels, setLevels] = useState<Level[]>([]);
   const [done, setDone] = useState(false);
@@ -387,11 +396,12 @@ export default function DailyBrief({ store }: { store: StoreState | null }) {
   }
 
   const entries = view.entries;
+  const belowCut = Math.max(0, view.candidateCount - new Set(entries.flatMap((e) => e.sources)).size);
 
   if (done) {
     return (
       <div className="folio-scroll">
-        <Done view={view} onBack={() => setDone(false)} />
+        <Done view={view} onBack={() => setDone(false)} onNavigate={onNavigate} />
       </div>
     );
   }
@@ -421,6 +431,7 @@ export default function DailyBrief({ store }: { store: StoreState | null }) {
             index={i}
             level={levels[i] ?? 0}
             byId={view.candidatesById}
+            onNavigate={onNavigate}
             onLevel={(l) =>
               setLevels((prev) => {
                 const next = [...prev];
@@ -433,6 +444,14 @@ export default function DailyBrief({ store }: { store: StoreState | null }) {
         ))}
 
         <div className="brief-end">
+          {belowCut > 0 && (
+            <p className="quiet-note">
+              {count(belowCut, "more candidate", true)} from today scored below the cut.{" "}
+              <button className="link" onClick={() => onNavigate("signals")}>
+                More from today in the Explorer →
+              </button>
+            </p>
+          )}
           <button className="button primary" onClick={() => setDone(true)}>
             I'm done for today
           </button>
