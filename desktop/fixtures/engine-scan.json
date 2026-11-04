@@ -1,13 +1,14 @@
 {
-  "engineVersion": "1.0.0",
-  "scannedAt": "2026-11-04T04:08:40.664998963Z",
+  "engineVersion": "1.1.0",
+  "scannedAt": "2026-11-04T20:09:47.541686725Z",
   "since": "2026-11-02",
   "tools": [
     "claude",
-    "codex"
+    "codex",
+    "pi"
   ],
-  "sessions": 6,
-  "pairs": 16,
+  "sessions": 8,
+  "pairs": 20,
   "candidates": [
     {
       "id": "20a4768e4f88e03b",
@@ -354,6 +355,80 @@
       ]
     },
     {
+      "id": "5d1c2f696c413310",
+      "tool": "pi",
+      "sessionId": "2026-11-02T16-05-12-204Z_4e8b1c2d-7a90-4f35-b6e1-0c9d2a7f5b13",
+      "cwd": "/Users/robert/work/recap",
+      "ts": "2026-11-02T16:06:40.118Z",
+      "userMessage": "why can't the app see codex when I launch it from the Dock? it works in my terminal",
+      "assistantExcerpt": "Because apps launched from Finder or the Dock are started by launchd, not by your shell, so they never run ~/.zprofile or ~/.zshrc. They inherit launchd's minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), which means anything Homebrew, nvm or npm put on your PATH is invisible to them. The terminal works because it starts a login shell that sources those files. The robust fix is to ask the user's login shell once - run `$SHELL -lic env` with a timeout - and use the PATH it prints, falling back to known install dirs like `/opt/homebrew/bin`. Rule of thumb: a GUI app should never assume it shares the terminal's environment.",
+      "score": 6,
+      "userScore": 3,
+      "assistantBonus": 3,
+      "signals": [
+        {
+          "name": "wh-question",
+          "weight": 3,
+          "side": "user"
+        },
+        {
+          "name": "assistant-depth",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-explains",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "wh-question:+3",
+        "assistant-depth:+1",
+        "assistant-code:+1",
+        "assistant-explains:+1"
+      ]
+    },
+    {
+      "id": "b1de448583d45cc7",
+      "tool": "pi",
+      "sessionId": "2026-11-02T16-05-12-204Z_4e8b1c2d-7a90-4f35-b6e1-0c9d2a7f5b13",
+      "cwd": "/Users/robert/work/recap",
+      "ts": "2026-11-02T16:12:02.551Z",
+      "userMessage": "how does LookPath pick between two binaries with the same name?",
+      "assistantExcerpt": "`exec.LookPath` walks PATH left to right and returns the first match that is a regular file with an execute bit, so the earlier directory wins. Under the hood it stats each candidate; it does not compare versions. That is why putting the login shell's PATH first matters: it makes the app resolve the same `codex` that `which codex` does in your terminal.",
+      "score": 5,
+      "userScore": 3,
+      "assistantBonus": 2,
+      "signals": [
+        {
+          "name": "wh-question",
+          "weight": 3,
+          "side": "user"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-explains",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "wh-question:+3",
+        "assistant-code:+1",
+        "assistant-explains:+1"
+      ]
+    },
+    {
       "id": "79d43f08c948ebd4",
       "tool": "claude",
       "sessionId": "0e7b7c82-1f45-4d3e-9a02-b1f3a58bde01",
@@ -407,6 +482,34 @@
       "signal_strings": [
         "wh-question:+3",
         "assistant-explains:+1"
+      ]
+    },
+    {
+      "id": "4f73521ad6c250be",
+      "tool": "pi",
+      "sessionId": "2026-11-02T19-40-03-877Z_a17d3e5f-2b84-4c09-9e6a-58f0c1b2d4e6",
+      "cwd": "/Users/robert/work/infra",
+      "ts": "2026-11-02T19:41:15.402Z",
+      "userMessage": "what does setpgid actually buy us when we cancel the inference cli?",
+      "assistantExcerpt": "Killing the CLI's pid only signals that one process; anything it spawned is reparented to init and keeps running. Starting the CLI with `Setpgid: true` makes it the leader of a new process group, which means `kill(-pgid, SIGTERM)` reaches the CLI and every descendant in one call. SIGKILL can't be trapped, so the parent sends SIGTERM first and only escalates after a grace period.",
+      "score": 4,
+      "userScore": 3,
+      "assistantBonus": 1,
+      "signals": [
+        {
+          "name": "wh-question",
+          "weight": 3,
+          "side": "user"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "wh-question:+3",
+        "assistant-code:+1"
       ]
     },
     {

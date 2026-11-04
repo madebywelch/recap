@@ -9,11 +9,14 @@ import (
 	"time"
 )
 
-// detectInferenceCLI returns "claude" or "codex" based on what's on PATH,
-// honoring an explicit preference if set. A preference containing a path
-// separator is treated as a custom executable (Go's exec.LookPath accepts
-// absolute or relative paths directly), so the desktop Settings can pass a
-// custom CLI path straight through.
+// inferenceCLIs are the CLIs "auto" tries, in order.
+var inferenceCLIs = []string{"claude", "codex", "pi"}
+
+// detectInferenceCLI returns the first of inferenceCLIs on PATH, honoring
+// an explicit preference if set. A preference containing a path separator
+// is treated as a custom executable (Go's exec.LookPath accepts absolute
+// or relative paths directly), so the desktop Settings can pass a custom
+// CLI path straight through.
 func detectInferenceCLI(prefer string) (string, error) {
 	check := func(name string) bool {
 		_, err := exec.LookPath(name)
@@ -25,17 +28,17 @@ func detectInferenceCLI(prefer string) (string, error) {
 		}
 		return prefer, nil
 	}
-	if check("claude") {
-		return "claude", nil
+	for _, name := range inferenceCLIs {
+		if check(name) {
+			return name, nil
+		}
 	}
-	if check("codex") {
-		return "codex", nil
-	}
-	return "", fmt.Errorf("neither claude nor codex CLI found on PATH")
+	return "", fmt.Errorf("no inference CLI found on PATH (tried %s)", strings.Join(inferenceCLIs, ", "))
 }
 
 // runInference shells out to the chosen CLI. The full prompt (instructions +
-// candidates JSON) goes in via stdin. Both CLIs accept this pattern.
+// candidates JSON) goes in via stdin. Every supported CLI accepts this
+// pattern.
 //
 // The CLI runs in its own process group so a timeout or a cancellation
 // (SIGTERM/SIGINT reaching this process, e.g. the desktop app stopping a
@@ -51,6 +54,12 @@ func runInference(ctx context.Context, cli, prompt string, timeout time.Duration
 	case cli == "codex":
 		// `codex exec -` reads instructions from stdin.
 		cmd = exec.Command("codex", "exec", "-")
+	case cli == "pi":
+		// `pi -p` takes piped stdin as the prompt and prints only the final
+		// assistant text. --no-session keeps the brief's own prompt out of
+		// ~/.pi/agent/sessions (and so out of tomorrow's scan); --no-tools
+		// makes it a pure text completion.
+		cmd = exec.Command("pi", "-p", "--no-session", "--no-tools")
 	default:
 		return "", fmt.Errorf("unknown inference cli: %s", cli)
 	}

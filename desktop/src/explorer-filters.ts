@@ -1,4 +1,4 @@
-import type { Candidate, Signal } from "./fixtures";
+import type { Candidate, Signal, Tool } from "./fixtures";
 
 /**
  * Pure filter and arithmetic helpers for the Signal Explorer. The store
@@ -9,7 +9,7 @@ import type { Candidate, Signal } from "./fixtures";
 
 export interface ExplorerFilters {
   minScore: number;
-  tool: "all" | "claude" | "codex";
+  tool: "all" | Tool;
   /** Signal names, any-of semantics: empty list means no filter. */
   signals: string[];
   /** Window edges as YYYY-MM-DD, "" for open. Compared against the

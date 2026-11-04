@@ -1,6 +1,6 @@
 # recap
 
-A daily knowledge-point briefing from your coding-agent sessions. Scans the prior N days of Claude Code and Codex transcripts on your machine, finds the moments where you encountered something unfamiliar, and produces a dense few-paragraph explainer of the underlying concepts — so you actually learn what the agent did instead of just merging the diff.
+A daily knowledge-point briefing from your coding-agent sessions. Scans the prior N days of Claude Code, Codex and Pi transcripts on your machine, finds the moments where you encountered something unfamiliar, and produces a dense few-paragraph explainer of the underlying concepts — so you actually learn what the agent did instead of just merging the diff.
 
 ![The recap desktop app showing a Daily Brief with the first concept opened to its explainer and rule of thumb](docs/images/daily-brief.png)
 
@@ -28,8 +28,9 @@ To build and run it, see [desktop/README.md](desktop/README.md). Prebuilt macOS 
 ## How it works
 
 ```
-~/.claude/projects/<slug>/<uuid>.jsonl     ┐
-~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl ┘
+~/.claude/projects/<slug>/<uuid>.jsonl          ┐
+~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl    ├
+~/.pi/agent/sessions/--<cwd>--/<ts>_<id>.jsonl  ┘
               │
               ▼
    parse  →  pair (user_msg, whole assistant turn), redact secrets
@@ -40,17 +41,17 @@ To build and run it, see [desktop/README.md](desktop/README.md). Prebuilt macOS 
                imperative/long/slash demotion, assistant depth)
               │
               ▼
-   top N  →  dedup, pipe JSON + system prompt into `claude -p` or `codex exec -`
+   top N  →  dedup, pipe JSON + system prompt into `claude -p`, `codex exec -` or `pi -p`
               │
               ▼
    stdout + ~/.claude/morning-recap/recap-YYYY-MM-DD.md
 ```
 
-No API keys, no SDK dependencies. Inference goes through whichever official CLI you already use (`claude` or `codex`), so it inherits your auth, your model selection, and your billing.
+No API keys, no SDK dependencies. Inference goes through whichever official CLI you already use (`claude`, `codex` or `pi`), so it inherits your auth, your model selection, and your billing.
 
 ## Install
 
-Requires Go 1.22+, plus at least one of `claude` (Claude Code CLI) or `codex` (Codex CLI) on your `$PATH`.
+Requires Go 1.22+, plus at least one of `claude` (Claude Code CLI), `codex` (Codex CLI) or `pi` ([Pi](https://pi.dev)) on your `$PATH`.
 
 ```sh
 git clone https://github.com/madebywelch/recap.git
@@ -63,12 +64,16 @@ ln -s "$(pwd)/recap" ~/.local/bin/recap   # or any directory on $PATH
 ## Usage
 
 ```sh
-recap                           # past 1 day, both tools, auto-pick inference CLI
+recap                           # past 1 day, every tool, auto-pick inference CLI (claude, then codex, then pi)
 recap --days 3                  # 3-day window
 recap --since 2026-04-30        # absolute start date
 recap --tool claude             # only mine Claude Code sessions
 recap --tool codex              # only mine Codex sessions
+recap --tool pi                 # only mine Pi sessions
+recap --tool both               # Claude Code + Codex, the default before Pi support
+recap --sources                 # print each tool's session directory and session counts as JSON
 recap --inference codex         # force Codex as the inference engine
+recap --inference pi            # force Pi (runs `pi -p --no-session --no-tools`)
 recap --raw                     # skip inference, print the scan envelope (scored candidates, structured signals) as JSON
 recap --top 50                  # send more candidates to inference (default 30)
 recap --no-archive              # don't write the dated markdown file
@@ -114,13 +119,14 @@ for _, c := range res.Candidates {
 | --- | --- |
 | `~/.claude/projects/*/*.jsonl` | Source: Claude Code session transcripts |
 | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Source: Codex session transcripts |
+| `~/.pi/agent/sessions/--<cwd>--/*.jsonl` | Source: Pi session transcripts (`PI_CODING_AGENT_SESSION_DIR` or `PI_CODING_AGENT_DIR/sessions` override it, as in Pi) |
 | `~/.claude/morning-recap/recap-YYYY-MM-DD.md` | Default archive directory (override with `--archive-dir`) |
 
 There is no config file. Everything is a flag.
 
 ## What it filters out
 
-Both transcript formats include a lot of machinery that isn't user input. `recap` drops:
+Every transcript format includes a lot of machinery that isn't user input. `recap` drops:
 
 - Tool-call results (Claude masquerades these as `type: "user"` lines)
 - Sidechains and meta-injected messages (`isSidechain`, `isMeta`)
@@ -130,13 +136,14 @@ Both transcript formats include a lot of machinery that isn't user input. `recap
 - Slash commands like `/agents` or `/skill foo` (scored down)
 - Session-continuation summary blocks that ride along when context fills
 - `[Request interrupted by user]` markers and Codex plugin/app-page injections
+- Pi's tool results, `!` bash executions, extension messages, compaction and branch summaries; a `/skill:name` invocation keeps only the words typed after the expanded skill
 - Duplicate prompts replayed by forked worktrees or resumed sessions (kept once)
 
 What's left is the actual back-and-forth between you and the agent, scored for moments that read like genuine confusion or curiosity.
 
 ## How scoring works
 
-A pair is one user message plus every assistant text block before the next user message. Both CLIs write one record per content block, so the turn is reassembled from interleaved thinking, text, tool_use and tool_result records.
+A pair is one user message plus every assistant text block before the next user message. Claude Code and Codex write one record per content block and Pi one per model call, so the turn is reassembled from interleaved thinking, text, tool call and tool result records.
 
 The user side decides whether a pair is a learning moment; the assistant side can at most double it, never create it. An imperative answered with a long summary is a completed task, not a lesson.
 
@@ -178,12 +185,12 @@ The archive directory is a plain markdown file. Nothing is uploaded.
 
 ```
 main.go        flag parsing, orchestration, stderr phase events, archive
-inference.go   shell out to claude/codex via stdin
+inference.go   shell out to claude/codex/pi via stdin
 prompt.go      the system prompt sent to the inference CLI
 engine/        the importable pipeline package (engine.Collect / engine.Score)
   engine.go    Options, scan envelope, version, public API
   scan.go      date-windowed walk of session directories
-  parse.go     JSONL parsers for both formats; turn pairing; system-injection filters
+  parse.go     JSONL parsers for all three formats; turn pairing; system-injection filters
   redact.go    secret patterns applied to every pair
   score.go     named-signal heuristics, stable candidate ids, dedup, ranking
   *_test.go    fixtures for pairing, scoring, and the JSON contract

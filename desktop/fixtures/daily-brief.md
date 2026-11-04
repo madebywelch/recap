@@ -1,6 +1,6 @@
 # Recap 2026-11-03 07:04
 
-_window: since 2026-11-02 | tools: claude+codex | sessions: 6 | pairs: 16 | candidates: 12 | inference: claude_
+_window: since 2026-11-02 | tools: claude+codex+pi | sessions: 8 | pairs: 20 | candidates: 15 | inference: claude_
 
 **SQLite locking modes and WAL.** `database is locked` with a single process almost always means there are more connections than you think, not that SQLite is broken. In the default rollback-journal mode a write takes an exclusive lock over the whole database file for the duration of the commit, so even a read opened at the wrong moment collides with it. The classic culprit is a migration runner: its own connection, a `BEGIN` that never reached `COMMIT`, and the application's connection queuing behind it until the driver gives up. Switching to write-ahead logging with `PRAGMA journal_mode=WAL` lets readers work from a snapshot while the single writer appends to the `-wal` file, and `busy_timeout` makes collisions wait instead of fail. Rule of thumb: "database is locked" with one process means a connection you forgot about — hunt for the second handle or the unfinished transaction before blaming SQLite.
 sources: 20a4768e4f88e03b,79d43f08c948ebd4

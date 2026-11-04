@@ -46,6 +46,15 @@ const capped: Candidate = {
 };
 
 describe("applyFilters", () => {
+  it("filters by each tool, Pi included, and the tools partition the scan", () => {
+    const byTool = (["claude", "codex", "pi"] as const).map((tool) => applyFilters(scan.candidates, { ...base, tool }));
+    for (const [i, tool] of (["claude", "codex", "pi"] as const).entries()) {
+      expect(byTool[i].length).toBeGreaterThan(0);
+      expect(byTool[i].every((c) => c.tool === tool)).toBe(true);
+    }
+    expect(byTool.reduce((n, list) => n + list.length, 0)).toBe(scan.candidates.length);
+  });
+
   it("passes everything with the base filter set", () => {
     expect(applyFilters(scan.candidates, base)).toHaveLength(scan.candidates.length);
   });

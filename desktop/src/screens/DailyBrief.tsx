@@ -344,7 +344,7 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
               date: "",
               entries: [],
               since: store.since,
-              tools: "claude + codex",
+              tools: store.tools.join(" + "),
               sessions: store.sessions,
               pairs: store.pairs,
               candidateCount: store.windowCandidates,
@@ -355,7 +355,7 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
           />
           {noCli ? (
             <>
-              <h1 className="display cta-block">Generation needs the claude or codex CLI.</h1>
+              <h1 className="display cta-block">Generation needs the claude, codex or pi CLI.</h1>
               <p className="dek">Scanning and the Signal Explorer still work. Install a CLI, or set a custom path in Settings.</p>
             </>
           ) : (

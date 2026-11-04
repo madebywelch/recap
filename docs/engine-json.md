@@ -2,7 +2,7 @@
 
 This is the machine contract between the recap engine and any consumer: the recap CLI's `--raw` output and the JSON encoding of [`engine.Result`](../engine/engine.go) are the same shape. The desktop app's client types are generated against this schema. A committed example lives in [`testdata/engine-v1.json`](../testdata/engine-v1.json) — byte-identical to `--raw` output for the same candidates, with `scannedAt` pinned — so a UI can develop against the file without running the engine.
 
-The version travels in the payload: `engineVersion`, stamped from `engine.Version` (currently `1.0.0`). Consumers should refuse to render payloads whose major version is newer than the one they understand. Within a major, changes are additive only (new optional fields, new signal names); breaking changes bump the major and ship with a new fixture.
+The version travels in the payload: `engineVersion`, stamped from `engine.Version` (currently `1.1.0`). Consumers should refuse to render payloads whose major version is newer than the one they understand. Within a major, changes are additive only (new optional fields, new signal names); breaking changes bump the major and ship with a new fixture.
 
 ## Top level: the scan envelope
 
@@ -13,19 +13,23 @@ The version travels in the payload: `engineVersion`, stamped from `engine.Versio
 | `engineVersion` | string | engine version, e.g. `"1.0.0"`; the major is the handshake |
 | `scannedAt` | string | RFC3339 timestamp of the scan |
 | `since` | string | start of the scan window, `YYYY-MM-DD` (local midnight of `now - days`, or the `--since` value) |
-| `tools` | array of strings | tools scanned, in order: `"claude"`, `"codex"` |
+| `tools` | array of strings | tools scanned, in order: `"claude"`, `"codex"`, `"pi"` |
 | `sessions` | integer | session files scanned |
 | `pairs` | integer | user/assistant pairs parsed before scoring |
 | `candidates` | array | scored candidates, best first; `[]` — never `null` — when nothing passed the filters |
 
 Candidates are ordered score descending, then timestamp descending (newest first).
 
+### Tool selection
+
+`--tool` (`engine.Options.Tool`) picks the sources: `claude`, `codex`, `pi`, `all` (every source, the default since 1.1.0), or `both`. `both` keeps its pre-Pi meaning, Claude Code plus Codex, so existing scripts and cron lines that pass it scan exactly what they did before. A scan with the default reports `tools: ["claude","codex","pi"]` even when one of them has no sessions on the machine.
+
 ## Candidate
 
 | field | type | always | description |
 | --- | --- | --- | --- |
 | `id` | string | yes | stable id, see below |
-| `tool` | string | yes | `"claude"` or `"codex"` |
+| `tool` | string | yes | `"claude"`, `"codex"` or `"pi"` (added in 1.1.0) |
 | `sessionId` | string | yes | session file stem (filename without `.jsonl`) |
 | `cwd` | string | no | working directory recorded in the session, when known |
 | `ts` | string | yes | RFC3339 timestamp of the user message |
@@ -68,6 +72,30 @@ All `userMessage` and `assistantExcerpt` text is redacted before it leaves the p
 
 Assistant-side signals only fire when `userScore > 0`, so a candidate with a non-positive `userScore` has `assistantBonus: 0` and user-side signals only.
 
+## Sources envelope
+
+`recap --sources [--days N | --since DATE] [--tool …]` prints where each source's transcripts live and how many there are, without parsing any of them. The desktop app's preflight shows it beside the inference CLIs.
+
+```json
+{
+  "engineVersion": "1.1.0",
+  "since": "2026-11-03",
+  "sources": [
+    { "tool": "claude", "root": "/Users/you/.claude/projects", "found": true, "sessions": 412, "recentSessions": 3 },
+    { "tool": "codex", "root": "/Users/you/.codex/sessions", "found": true, "sessions": 57, "recentSessions": 1 },
+    { "tool": "pi", "root": "/Users/you/.pi/agent/sessions", "found": false, "sessions": 0, "recentSessions": 0 }
+  ]
+}
+```
+
+| field | type | description |
+| --- | --- | --- |
+| `tool` | string | the source, in scan order |
+| `root` | string | the directory scanned for it |
+| `found` | boolean | whether that directory exists |
+| `sessions` | integer | `.jsonl` session files under it, all time |
+| `recentSessions` | integer | session files a scan of the same window would read |
+
 ## Stable candidate ids
 
 Scanning the same window twice yields identical ids, so consumers can upsert by id instead of duplicating rows: the first 16 hex characters of SHA-256 over `tool|session|ts-unix-nano|dedupKey(user)` — the tool, the session file stem, the user message's Unix-nano timestamp, and the normalized user text used for deduplication (lowercased, marker-stripped, whitespace-collapsed, first 200 runes). Duplicate prompts replayed by forked worktrees or resumed sessions are deduplicated before scoring, so ids are unique within a result.
@@ -81,7 +109,7 @@ During a generation run (`recap --days N` without `--raw`), the engine additiona
 {"event":"inference_start","cli":"claude","timeout_s":240}
 ```
 
-`scan_done` reports the scan counts; `inference_start` fires just before the inference CLI is launched. Treat the events as optional — an older engine emits none, and they never appear on stdout or inside the JSON envelope. `--raw` runs emit no events; the envelope already carries the counts.
+`scan_done` reports the scan counts; `inference_start` fires just before the inference CLI is launched; `cli` is `claude`, `codex`, `pi`, or a custom path. Treat the events as optional — an older engine emits none, and they never appear on stdout or inside the JSON envelope. `--raw` runs emit no events; the envelope already carries the counts.
 
 ## Generation output and source linkage
 

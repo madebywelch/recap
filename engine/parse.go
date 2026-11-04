@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -24,9 +25,9 @@ type Pair struct {
 // pairer turns an ordered stream of user and assistant texts into Pairs.
 //
 // A pair is one real user message plus every assistant text block emitted
-// before the next real user message. Both CLIs write one record per content
-// block, so a single assistant turn arrives as thinking, text, tool_use and
-// tool_result records interleaved. Anything that is not a real user message
+// before the next real user message. Claude Code and Codex write one record
+// per content block and Pi one per model call, so a single assistant turn
+// arrives as thinking, text, tool call and tool result records interleaved. Anything that is not a real user message
 // or assistant text is not an event: it neither starts a pair nor ends one.
 type pairer struct {
 	tool    string
@@ -300,31 +301,110 @@ func codexBlockText(blocks []claudeBlock) string {
 	return strings.Join(parts, "\n")
 }
 
+// --- Pi -------------------------------------------------------------------
+
+// Pi (github.com/earendil-works/pi, the `pi` coding agent) writes one JSONL
+// file per session: a {"type":"session"} header carrying the cwd, then
+// entries linked into a tree by id/parentId. Conversation turns are
+// {"type":"message"} entries whose message.role is user, assistant,
+// toolResult, bashExecution, custom, system, branchSummary or
+// compactionSummary; only user and assistant text is a pair. Entries are
+// appended in the order they happened, and a branch (/tree) appends its new
+// user message after the abandoned branch's turns, so file order pairs each
+// user message with the replies that answered it on whichever branch.
+// Schema: packages/coding-agent/docs/session-format.md.
+
+type piEntry struct {
+	Type      string          `json:"type"`
+	Timestamp string          `json:"timestamp"`
+	Cwd       string          `json:"cwd"`
+	Message   json.RawMessage `json:"message"`
+}
+
+type piMessage struct {
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
+}
+
+// piSkillBlock matches Pi's expansion of a /skill:name invocation: the
+// skill file wrapped in <skill> tags, then the human's own words, if any,
+// after a blank line (parseSkillBlock in core/agent-session.ts).
+var piSkillBlock = regexp.MustCompile(`(?s)^<skill name="[^"]*" location="[^"]*">\n.*?\n</skill>(?:\n\n(.+))?$`)
+
+func parsePiFile(path string) ([]Pair, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	pr := &pairer{tool: "pi", session: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
+	sc := newScanner(f)
+	for sc.Scan() {
+		var e piEntry
+		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
+			continue
+		}
+		switch e.Type {
+		case "session":
+			pr.cwd = e.Cwd
+		case "message":
+			var msg piMessage
+			if err := json.Unmarshal(e.Message, &msg); err != nil {
+				continue
+			}
+			switch msg.Role {
+			case "user":
+				ts, _ := time.Parse(time.RFC3339Nano, e.Timestamp)
+				if text := piUserText(msg.Content); text != "" {
+					pr.startUser(text, ts)
+				} else {
+					pr.flush()
+				}
+			case "assistant":
+				pr.addAssistant(extractClaudeAssistantText(msg.Content))
+			}
+		}
+	}
+	pr.flush()
+	return pr.pairs, sc.Err()
+}
+
+// piUserText is the human's text in a Pi user message: content is a string
+// or text/image blocks, the same shapes Claude Code writes, and a skill
+// invocation keeps only the words typed after the expanded skill. Pi gives
+// injected context its own roles, so every user message is a human turn:
+// one with no text left (a bare skill invocation) still ends the previous
+// pair instead of donating its reply to it.
+func piUserText(content json.RawMessage) string {
+	text := extractClaudeUserText(content)
+	if m := piSkillBlock.FindStringSubmatch(strings.TrimSpace(text)); m != nil {
+		return cleanUserText(strings.TrimSpace(m[1]))
+	}
+	return text
+}
+
 // --- shared collector -----------------------------------------------------
 
 func collectTool(tool string, since time.Time) ([]Pair, int, error) {
-	var paths []string
-	var err error
+	var parse func(string) ([]Pair, error)
 	switch tool {
 	case "claude":
-		paths, err = scanClaude(since)
+		parse = parseClaudeFile
 	case "codex":
-		paths, err = scanCodex(since)
+		parse = parseCodexFile
+	case "pi":
+		parse = parsePiFile
 	default:
 		return nil, 0, fmt.Errorf("unknown tool: %s", tool)
 	}
+	paths, err := scanTool(tool, since)
 	if err != nil {
 		return nil, 0, err
 	}
 	var all []Pair
 	for _, p := range paths {
-		var pairs []Pair
-		switch tool {
-		case "claude":
-			pairs, err = parseClaudeFile(p)
-		case "codex":
-			pairs, err = parseCodexFile(p)
-		}
+		pairs, err := parse(p)
 		if err != nil {
 			continue
 		}

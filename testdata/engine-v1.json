@@ -1,14 +1,49 @@
 {
-  "engineVersion": "1.0.0",
+  "engineVersion": "1.1.0",
   "scannedAt": "2026-10-16T16:00:00Z",
   "since": "2026-10-15",
   "tools": [
     "claude",
-    "codex"
+    "codex",
+    "pi"
   ],
-  "sessions": 3,
-  "pairs": 5,
+  "sessions": 4,
+  "pairs": 6,
   "candidates": [
+    {
+      "id": "aa10fc9709dbbf25",
+      "tool": "pi",
+      "sessionId": "2026-10-16T13-20-00-000Z_5d2c9e7a-0f41-4c8e-9b3d-6a1e2f7c8b90",
+      "cwd": "/workspace/app",
+      "ts": "2026-10-16T13:20:00Z",
+      "userMessage": "how does exec.LookPath pick between two binaries with the same name?",
+      "assistantExcerpt": "LookPath walks PATH left to right and returns the first executable match, so the earlier directory wins. Under the hood it stats each candidate and checks the execute bit, which means a stale binary earlier on PATH shadows a newer one.",
+      "score": 5,
+      "userScore": 4,
+      "assistantBonus": 1,
+      "signals": [
+        {
+          "name": "wh-question",
+          "weight": 3,
+          "side": "user"
+        },
+        {
+          "name": "question",
+          "weight": 1,
+          "side": "user"
+        },
+        {
+          "name": "assistant-explains",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "wh-question:+3",
+        "question:+1",
+        "assistant-explains:+1"
+      ]
+    },
     {
       "id": "9f8b7ec5976d64e0",
       "tool": "claude",

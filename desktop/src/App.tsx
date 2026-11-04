@@ -8,7 +8,8 @@ import FirstRun from "./screens/FirstRun";
 import EngineRefusal from "./screens/EngineRefusal";
 import { localDate } from "./brief";
 import { initStore, loadDueOverview, onDueChanged, type StoreState } from "./store";
-import { detectInference, getSettings, type Detection, type Settings } from "./generation";
+import type { SourcesResult } from "./fixtures";
+import { detectInference, detectSources, getSettings, type Detection, type Settings } from "./generation";
 
 export type Screen = "brief" | "library" | "signals" | "review" | "settings";
 
@@ -27,7 +28,7 @@ const NAV: { id: Screen; label: string }[] = [
  *  dismissed (or outside the shell, where settings don't exist). */
 type Welcome =
   | { phase: "pending" }
-  | { phase: "show"; settings: Settings; detection: Detection | null }
+  | { phase: "show"; settings: Settings; detection: Detection | null; sources: SourcesResult | null }
   | { phase: "done" };
 
 export default function App() {
@@ -63,8 +64,11 @@ export default function App() {
       try {
         const settings = await getSettings();
         if (settings.onboarded || !alive) return;
-        const detection = await detectInference().catch(() => null);
-        if (alive) setWelcome({ phase: "show", settings, detection });
+        const [detection, sources] = await Promise.all([
+          detectInference().catch(() => null),
+          detectSources().catch(() => null),
+        ]);
+        if (alive) setWelcome({ phase: "show", settings, detection, sources });
       } catch {
         // browser build, or the shell never answered: no sheet
       }
@@ -132,6 +136,7 @@ export default function App() {
         <FirstRun
           settings={welcome.settings}
           detection={welcome.detection}
+          sources={welcome.sources}
           onDone={() => setWelcome({ phase: "done" })}
         />
       )}

@@ -50,7 +50,7 @@ func TestCollectScansHomeTranscripts(t *testing.T) {
 	if res.ScannedAt.IsZero() {
 		t.Error("ScannedAt not set")
 	}
-	if got, want := fmt.Sprint(res.Tools), "[claude codex]"; got != want {
+	if got, want := fmt.Sprint(res.Tools), "[claude codex pi]"; got != want {
 		t.Errorf("Tools = %s, want %s", got, want)
 	}
 	now := time.Now()
@@ -221,6 +221,13 @@ func fixturePairs() []Pair {
 			User:      "deploy it",
 			Assistant: "Deployed to production.",
 		},
+		{
+			Tool: "pi", Session: "2026-10-16T13-20-00-000Z_5d2c9e7a-0f41-4c8e-9b3d-6a1e2f7c8b90", Cwd: "/workspace/app",
+			Ts:   time.Date(2026, 10, 16, 13, 20, 0, 0, time.UTC),
+			User: "how does exec.LookPath pick between two binaries with the same name?",
+			Assistant: "LookPath walks PATH left to right and returns the first executable match, so the earlier directory wins. " +
+				"Under the hood it stats each candidate and checks the execute bit, which means a stale binary earlier on PATH shadows a newer one.",
+		},
 	}
 }
 
@@ -231,9 +238,9 @@ func fixtureResult() Result {
 	return Result{
 		ScannedAt:  time.Date(2026, 10, 16, 16, 0, 0, 0, time.UTC),
 		Since:      time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
-		Tools:      []string{"claude", "codex"},
-		Sessions:   3,
-		Pairs:      5,
+		Tools:      []string{"claude", "codex", "pi"},
+		Sessions:   4,
+		Pairs:      6,
 		Candidates: Score(fixturePairs(), Options{MinScore: -100}),
 	}
 }
@@ -255,8 +262,8 @@ func TestScanResultJSONMatchesFixture(t *testing.T) {
 
 	// Schema invariants the fixture must demonstrate.
 	res := fixtureResult()
-	if len(res.Candidates) != 5 {
-		t.Fatalf("want 5 candidates (min-score -100 keeps the demoted pair), got %d", len(res.Candidates))
+	if len(res.Candidates) != 6 {
+		t.Fatalf("want 6 candidates (min-score -100 keeps the demoted pair), got %d", len(res.Candidates))
 	}
 	for _, c := range res.Candidates {
 		if c.Score != c.UserScore+c.AssistantBonus {

@@ -99,3 +99,45 @@ func TestRunInferenceTimeoutKillsProcessGroup(t *testing.T) {
 	}
 	waitFor(t, func() bool { return !childAlive(pidFile) }, "the spawned child to die with the group")
 }
+
+// Each CLI gets its own non-interactive invocation with the prompt on
+// stdin, and auto walks claude, codex, pi in order: with only pi on PATH,
+// auto picks pi and runs it as `pi -p --no-session --no-tools`.
+func TestDetectAndRunEachInferenceCLI(t *testing.T) {
+	for _, tc := range []struct {
+		name, args string
+	}{
+		{"claude", "-p"},
+		{"codex", "exec -"},
+		{"pi", "-p --no-session --no-tools"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			stub := "#!/bin/sh\nprintf 'args=%s stdin=' \"$*\"\n/bin/cat\n"
+			if err := os.WriteFile(filepath.Join(dir, tc.name), []byte(stub), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", dir)
+
+			cli, err := detectInferenceCLI("auto")
+			if err != nil || cli != tc.name {
+				t.Fatalf("auto picked %q (%v), want %s", cli, err, tc.name)
+			}
+			out, err := runInference(context.Background(), cli, "the prompt", 5*time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := "args=" + tc.args + " stdin=the prompt"; out != want {
+				t.Errorf("got %q, want %q", out, want)
+			}
+		})
+	}
+
+	t.Setenv("PATH", t.TempDir())
+	if _, err := detectInferenceCLI("auto"); err == nil || !strings.Contains(err.Error(), "no inference CLI found on PATH (tried claude, codex, pi)") {
+		t.Errorf("empty PATH: got %v", err)
+	}
+	if _, err := detectInferenceCLI("pi"); err == nil || err.Error() != "pi CLI not found on PATH" {
+		t.Errorf("explicit pi missing: got %v", err)
+	}
+}
