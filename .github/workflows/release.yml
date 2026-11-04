@@ -59,6 +59,19 @@ jobs:
           pnpm sidecar aarch64-apple-darwin
           pnpm tauri build --target aarch64-apple-darwin
 
+      - name: Verify the bundle's code signature
+        # The bundle is ad-hoc signed by default (signingIdentity "-"),
+        # so Gatekeeper offers the "unidentified developer → Open Anyway"
+        # path instead of calling the app damaged. A broken seal — the
+        # "damaged" case — must fail the job here, before anyone installs
+        # it. spctl is informational: an ad-hoc build has no Apple
+        # identity, so Gatekeeper will reject it; that's expected and
+        # must not fail the run.
+        working-directory: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos
+        run: |
+          codesign --verify --deep --strict --verbose=2 Recap.app
+          spctl --assess --type execute -vv Recap.app || true
+
       - name: Upload the dmg as a run artifact
         uses: actions/upload-artifact@v4
         with:
