@@ -2,11 +2,28 @@
 
 A daily knowledge-point briefing from your coding-agent sessions. Scans the prior N days of Claude Code and Codex transcripts on your machine, finds the moments where you encountered something unfamiliar, and produces a dense few-paragraph explainer of the underlying concepts — so you actually learn what the agent did instead of just merging the diff.
 
+![The recap desktop app showing a Daily Brief with the first concept opened to its explainer and rule of thumb](docs/images/daily-brief.png)
+
 ## Why
 
 When you offload most of your coding to an AI agent, you stop reading what it produces. The first time it reaches for `AT+CGDCONT`, `ASWebAuthenticationSession`, or a quantized GGUF, you skim the explanation and move on. Six months in, you've shipped a lot and learned almost nothing — skill atrophy that compounds quietly.
 
 `recap` is a counterweight. Every morning it pulls the prior day's sessions, picks the 4–6 highest-leverage things you brushed past, and writes them up as concept explainers — what the thing actually is, how it works, and the rule of thumb worth keeping. Not an activity log. Not a summary of what got done. Just the knowledge.
+
+## Desktop app
+
+[`desktop/`](desktop/) is a Tauri app that turns recap's output into a learning center you check in on, instead of a markdown file you scroll once.
+
+- **Daily brief.** The day's concepts as cards. Each opens to the full explainer and its rule of thumb, then to the exchange that started it, with the signals and score that made the engine pick it.
+- **Signal explorer.** Every candidate the engine scored, including the ones below the cut, with filters and the score arithmetic for each.
+- **Spaced review.** Concepts come back as short recall questions: recall, reveal, grade. Kept ones come back less often, lost ones return tomorrow, and a skipped day just leaves the due list waiting.
+- **Local-first.** The app runs the same Go engine as a bundled sidecar and keeps its data in a SQLite file on your machine. No account, no server.
+
+![The source exchange under a concept: the user's question, the agent's reply, and the signal chips behind its score](docs/images/source-exchange.png)
+
+![The end-of-brief screen in dark mode: today's six concepts, each scheduled for review tomorrow](docs/images/done-dark.png)
+
+To build and run it, see [desktop/README.md](desktop/README.md).
 
 ## How it works
 
