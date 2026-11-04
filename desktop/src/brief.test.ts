@@ -45,6 +45,26 @@ describe("parseEntries", () => {
   it("estimates a bounded reading time", () => {
     expect(readMinutes(entries)).toBeGreaterThanOrEqual(1);
   });
+  it("parses the raw markdown a generation run prints, with no archive header", () => {
+    const raw = [
+      "**SQLite locking modes and WAL.** One sentence lede here. The body follows.",
+      "",
+      "**EADDRINUSE.** Another entry. Rule of thumb: kill the holder.",
+      "",
+      "sources: nope",  // dropped: not part of a matching entry
+    ].join("\n");
+    const entries = parseEntries(raw);
+    expect(entries.map((e) => e.title)).toEqual([
+      "SQLite locking modes and WAL",
+      "EADDRINUSE",
+    ]);
+    expect(entries[1].rule).toBe("Kill the holder.");
+  });
+
+  it("yields zero entries for output that parses to nothing", () => {
+    expect(parseEntries("The model ignored every format instruction here.")).toEqual([]);
+  });
+
 });
 
 describe("count", () => {

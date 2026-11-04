@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/madebywelch/recap/engine"
@@ -17,7 +20,7 @@ func main() {
 		days       = flag.Int("days", 1, "how many days back to scan")
 		sinceFlag  = flag.String("since", "", "absolute date YYYY-MM-DD (overrides --days)")
 		toolFlag   = flag.String("tool", "both", "session source: claude | codex | both")
-		inferFlag  = flag.String("inference", "auto", "inference CLI: claude | codex | auto")
+		inferFlag  = flag.String("inference", "auto", "inference CLI: claude | codex | auto | /path/to/cli")
 		rawFlag    = flag.Bool("raw", false, "skip inference; print scored candidates as JSON")
 		minScore   = flag.Int("min-score", 2, "minimum candidate score to keep")
 		topN       = flag.Int("top", 30, "max candidates to send to inference (0 = all)")
@@ -98,7 +101,12 @@ func main() {
 	})
 
 	prompt := buildPrompt(res.Candidates)
-	out, err := runInference(cli, prompt, time.Duration(*timeoutSec)*time.Second)
+	// SIGTERM/SIGINT cancel the run: the desktop app stops a generation by
+	// signalling this process, and runInference kills the inference CLI's
+	// whole process group on the way out so nothing is orphaned.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	out, err := runInference(ctx, cli, prompt, time.Duration(*timeoutSec)*time.Second)
 	if err != nil {
 		die("inference: %v", err)
 	}

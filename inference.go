@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -9,7 +10,10 @@ import (
 )
 
 // detectInferenceCLI returns "claude" or "codex" based on what's on PATH,
-// honoring an explicit preference if set.
+// honoring an explicit preference if set. A preference containing a path
+// separator is treated as a custom executable (Go's exec.LookPath accepts
+// absolute or relative paths directly), so the desktop Settings can pass a
+// custom CLI path straight through.
 func detectInferenceCLI(prefer string) (string, error) {
 	check := func(name string) bool {
 		_, err := exec.LookPath(name)
@@ -32,13 +36,19 @@ func detectInferenceCLI(prefer string) (string, error) {
 
 // runInference shells out to the chosen CLI. The full prompt (instructions +
 // candidates JSON) goes in via stdin. Both CLIs accept this pattern.
-func runInference(cli, prompt string, timeout time.Duration) (string, error) {
+//
+// The CLI runs in its own process group so a timeout or a cancellation
+// (SIGTERM/SIGINT reaching this process, e.g. the desktop app stopping a
+// generation) can take down the whole tree — the CLI plus anything it
+// spawned — instead of orphaning it.
+func runInference(ctx context.Context, cli, prompt string, timeout time.Duration) (string, error) {
 	var cmd *exec.Cmd
-	switch cli {
-	case "claude":
-		// `claude -p` reads the prompt from stdin when no positional arg is given.
-		cmd = exec.Command("claude", "-p")
-	case "codex":
+	switch {
+	case cli == "claude" || strings.ContainsAny(cli, "/\\"):
+		// `claude -p` reads the prompt from stdin when no positional arg is
+		// given. A custom path is invoked the same way, claude-style.
+		cmd = exec.Command(cli, "-p")
+	case cli == "codex":
 		// `codex exec -` reads instructions from stdin.
 		cmd = exec.Command("codex", "exec", "-")
 	default:
@@ -49,6 +59,7 @@ func runInference(cli, prompt string, timeout time.Duration) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	setProcessGroup(cmd)
 
 	done := make(chan error, 1)
 	if err := cmd.Start(); err != nil {
@@ -61,8 +72,13 @@ func runInference(cli, prompt string, timeout time.Duration) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("%s failed: %w\nstderr: %s", cli, err, stderr.String())
 		}
+	case <-ctx.Done():
+		killProcessGroup(cmd)
+		<-done
+		return "", fmt.Errorf("%s cancelled", cli)
 	case <-time.After(timeout):
-		_ = cmd.Process.Kill()
+		killProcessGroup(cmd)
+		<-done
 		return "", fmt.Errorf("%s timed out after %s", cli, timeout)
 	}
 

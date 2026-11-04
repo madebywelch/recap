@@ -6,10 +6,11 @@ A Tauri 2 shell for the learning-center app: where recap's output becomes screen
 
 | Screen | Status | What it does today |
 | --- | --- | --- |
-| Daily Brief | real | Parses `fixtures/daily-brief.md` (the archive format from `main.go`: header line, window line, markdown body) and renders it as the day's brief, with the run's metadata from the header. |
+| Daily Brief | real | Live: reads the persisted generation run for the scanned window, or offers "Write today's brief" when there isn't one. Generation runs the engine sidecar with the inference CLI, shows phase progress (scan → writing, elapsed, Cancel), and renders the result in the Folio card layout. Falls back to the committed fixture outside the shell. |
 | Signal Explorer | real | Live data: the app scans on open via the bundled engine sidecar, upserts the scan into SQLite, and renders the store — every candidate with score and signal chips, filters (min score, tool, signal, date range, text), and the selected one's score arithmetic (user gate, assistant amplification, the cap called out) over the redacted exchange. Falls back to the committed fixture outside the shell. |
 | Concept Library | placeholder | Not built yet. The plan: concept entries harvested from past briefs, deduplicated, linked back to the sessions where they came up. |
 | Review | placeholder | Not built yet. The plan: a short daily pass over saved concepts, drawn from your own sessions. |
+| Settings | real | The inference CLI (auto, claude, codex, or a custom path), the generation timeout (60–900s), the augmented PATH display, and preflight detection so a missing CLI is never a surprise mid-generation. Persisted in settings.json next to the store. |
 
 No component libraries, plain CSS, no router — four screens don't need one. Markdown rendering uses `marked`; that is the only runtime dependency beyond React.
 
@@ -59,9 +60,16 @@ Wired, per docs/desktop-app-spec.md:
 - **Validate, then store.** The frontend pushes the payload through `validateScanResult` (version handshake, shape guards), then upserts into SQLite via the SQL plugin — one `runs` row per scan, candidates keyed by the engine-stable id so a rescan replaces rather than duplicates. The schema is the `runs` + `candidates` tables from the spec's App storage section; the database file lives in the OS app-config dir for this app (`~/.config/com.madebywelch.recap/recap.db` on Linux). If the scan fails — no sidecar, no transcripts, engine too new — the app says so and shows the fixture.
 - **PATH augmentation.** GUI-launched apps see a minimal PATH, so the spawn owns the environment per the spec: `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` go in front of the inherited PATH before the sidecar runs, keeping the engine's inference-CLI detection working when the app is launched from Finder/Dock.
 
+## Generation and Settings
+
+The Brief screen writes today's brief through the same sidecar: the `generate_brief` shell command runs `recap --days 1 --inference <cli> --timeout <N>` (the spec's generation invocation), forwards the engine's stderr phase events to the frontend, and returns the brief markdown from stdout. The frontend parses it with `src/brief.ts` — the same parser the archive uses, extended to accept header-less generation output — records the run (`raw_output`, `archive_path`, `inference_cli` in the runs table), and renders it. The engine writes the archive to the shared `~/.claude/morning-recap` dir exactly as the CLI does, so app users and cron users see the same history.
+
+Cancellation is process-group clean: the app SIGTERMs the sidecar, the engine traps the signal and kills the inference CLI's whole process group (it starts the CLI with setpgid), and the app SIGKILLs after a grace period. Quitting the app mid-generation does the same. The Go side is covered by `inference_test.go`, which spawns a stub CLI with a grandchild, cancels, and asserts nothing survives.
+
+Settings persist in `settings.json` next to the SQLite store: the inference CLI (auto, claude, codex, or a custom path passed to `--inference` and run claude-style), the timeout (60–900s), and the preflight detection display. The app spawns every sidecar run with the spec's augmented PATH, so the engine finds CLI installs GUI launches normally miss.
+
 ## What remains for later milestones
 
-- **M3 — generation.** The `brief` screen still reads the committed fixture. The sidecar's generation run (`recap --days 1`) with its stderr phase events and the archive-file read-back replaces it; the explorer's `raw_output`/`archive_path` columns are already in the runs table.
 - **M4/M5 — Library and Review.** The `concepts`, `review_state`, and FTS tables join this database when those screens are built.
 - The fixtures stay: offline test data, the shape contract for the engine's output, and the corrupted copy that keeps proving the validator rejects bad payloads.
 
@@ -71,15 +79,20 @@ Wired, per docs/desktop-app-spec.md:
 fixtures/          daily-brief.md (archive format), engine-scan.json + corrupted copy (the --raw envelope)
 scripts/           build-sidecar.sh (engine binary as the Tauri sidecar)
 src/               React frontend
-  fixtures.ts      engine contract client: types, validateScanResult, fixture imports, brief parsing
+  fixtures.ts      engine contract client: types, validateScanResult, fixture imports
   fixtures.test.ts contract validation tests (vitest)
+  brief.ts         the archive/generation entry parser + Brief presentation helpers
+  brief.test.ts    its tests
   explorer-filters.ts  pure Explorer filter + arithmetic helpers
   explorer-filters.test.ts their tests
-  store.ts         scan → validate → SQLite upsert → load; fixture fallback
+  generation.ts    generation client: settings, detection, generate/cancel, error classification
+  store.ts         scan → validate → SQLite upsert → load; brief run persistence; fixture fallback
+  useExplorer.ts   Explorer state (filters, selection)
+  useBrief.ts      Daily Brief state machine (ready / cta / generating / error)
   App.tsx          sidebar nav, launch scan, screen switch
-  screens/         DailyBrief, SignalExplorer, ConceptLibrary, Review, Placeholder
+  screens/         DailyBrief, SignalExplorer, ConceptLibrary, Review, Settings
 src-tauri/         the Rust shell
-  src/main.rs      plugins + the run_scan sidecar command
+  src/main.rs      plugins + commands: run_scan, generate/cancel with phase events, settings, detection
   tauri.conf.json  window, build commands, externalBin
   capabilities/    main-window permissions (core, sql)
   binaries/        sidecar build output (gitignored)

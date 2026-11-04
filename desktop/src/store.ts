@@ -24,8 +24,39 @@ export interface StoreState {
   /** Start of the scan window the data came from, YYYY-MM-DD. */
   since: string;
   candidates: Candidate[];
+  /** The launch scan's counts, for the Brief's facts strip and the
+   *  write-the-brief decision. */
+  sessions: number;
+  pairs: number;
+  /** Candidates the launch scan kept for this window. */
+  windowCandidates: number;
   /** Set when a live scan was attempted and failed; the fixture is shown. */
   error?: string;
+}
+
+/** One persisted run row, as the Brief reads it back. */
+export interface BriefRecord {
+  id: number;
+  since: string;
+  started_at: string;
+  finished_at: string | null;
+  inference_cli: string | null;
+  raw_output: string;
+}
+
+/** A generation run to record (the spec's runs table; a generation is its
+ *  own run, with raw_output and the archive path filled in). */
+export interface GenerationRecord {
+  startedAt: string;
+  finishedAt: string;
+  since: string;
+  tools: string;
+  sessions: number;
+  pairs: number;
+  status: "done" | "failed" | "cancelled";
+  inferenceCli: string;
+  archivePath: string | null;
+  rawOutput: string;
 }
 
 const DB_NAME = "sqlite:recap.db";
@@ -80,7 +111,15 @@ let db: Database | null = null;
 
 function fixtureStore(error?: string): StoreState {
   const scan = validateScanResult(fixtureScanSource);
-  return { source: "fixture", since: scan.since, candidates: scan.candidates, error };
+  return {
+    source: "fixture",
+    since: scan.since,
+    candidates: scan.candidates,
+    sessions: scan.sessions,
+    pairs: scan.pairs,
+    windowCandidates: scan.candidates.length,
+    error,
+  };
 }
 
 /** Records one validated scan: a run row, then each candidate upserted by
@@ -168,8 +207,53 @@ export async function initStore(): Promise<StoreState> {
     const scan = validateScanResult(JSON.parse(raw));
     await ingest(scan);
     const candidates = await loadCandidates();
-    return { source: "live", since: scan.since, candidates };
+    return {
+      source: "live",
+      since: scan.since,
+      candidates,
+      sessions: scan.sessions,
+      pairs: scan.pairs,
+      windowCandidates: scan.candidates.length,
+    };
   } catch (e) {
     return fixtureStore(e instanceof Error ? e.message : String(e));
   }
+}
+
+/** The latest generated brief for a scan window, when one exists. */
+export async function loadBriefRun(since: string): Promise<BriefRecord | null> {
+  if (!db) return null;
+  const rows = await db.select<
+    { id: number; since: string; started_at: string; finished_at: string | null; inference_cli: string | null; raw_output: string }[]
+  >(
+    `SELECT id, since, started_at, finished_at, inference_cli, raw_output
+     FROM runs WHERE raw_output IS NOT NULL AND since = $1
+     ORDER BY id DESC LIMIT 1`,
+    [since],
+  );
+  return rows[0] ?? null;
+}
+
+/** Records a finished generation run — post-hoc, so a crash mid-run never
+ *  leaves a stale "generating" row behind (the live progress panel holds
+ *  in-flight state, not the store). */
+export async function recordGeneration(rec: GenerationRecord): Promise<void> {
+  if (!db) return;
+  await db.execute(
+    `INSERT INTO runs
+       (started_at, finished_at, since, tools, sessions, pairs, status, inference_cli, archive_path, raw_output)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [
+      rec.startedAt,
+      rec.finishedAt,
+      rec.since,
+      rec.tools,
+      rec.sessions,
+      rec.pairs,
+      rec.status,
+      rec.inferenceCli,
+      rec.archivePath,
+      rec.rawOutput,
+    ],
+  );
 }

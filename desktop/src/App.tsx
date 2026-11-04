@@ -3,9 +3,10 @@ import DailyBrief from "./screens/DailyBrief";
 import SignalExplorer from "./screens/SignalExplorer";
 import ConceptLibrary from "./screens/ConceptLibrary";
 import Review from "./screens/Review";
+import SettingsScreen from "./screens/Settings";
 import { initStore, type StoreState } from "./store";
 
-export type Screen = "brief" | "library" | "signals" | "review";
+export type Screen = "brief" | "library" | "signals" | "review" | "settings";
 
 /** Switch screens; a candidate id opens the Explorer on that candidate. */
 export type Navigate = (to: Screen, candidateId?: string) => void;
@@ -15,6 +16,7 @@ const NAV: { id: Screen; label: string }[] = [
   { id: "library", label: "Concept Library" },
   { id: "signals", label: "Signal Explorer" },
   { id: "review", label: "Review" },
+  { id: "settings", label: "Settings" },
 ];
 
 export default function App() {
@@ -65,10 +67,11 @@ export default function App() {
         </div>
       </aside>
       <main className="content">
-        {screen === "brief" && <DailyBrief onNavigate={go} />}
+        {screen === "brief" && <DailyBrief store={store} onNavigate={go} />}
         {screen === "library" && <ConceptLibrary onNavigate={go} />}
         {screen === "signals" && <SignalExplorer store={store} focus={focus} onNavigate={go} />}
         {screen === "review" && <Review />}
+        {screen === "settings" && <SettingsScreen />}
       </main>
     </div>
   );

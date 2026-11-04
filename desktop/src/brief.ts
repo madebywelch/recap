@@ -20,8 +20,16 @@ export interface BriefEntry {
 const ENTRY_RE = /^\*\*(.+?)\*\*\s+([\s\S]+)$/;
 const RULE_MARK = "Rule of thumb:";
 
+/** The entry body of a brief: an archive file starts with its `# Recap`
+ *  header and window line (three lines before the first entry); the raw
+ *  markdown a generation run prints on stdout has no header at all. */
+export function briefBody(raw: string): string {
+  const lines = raw.split("\n");
+  return lines[0].startsWith("# Recap ") ? lines.slice(3).join("\n") : raw;
+}
+
 export function parseEntries(raw: string): BriefEntry[] {
-  const body = raw.split("\n").slice(3).join("\n");
+  const body = briefBody(raw);
   return body
     .split(/\n\s*\n/)
     .map((block) => block.trim().split("\n"))
