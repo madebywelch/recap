@@ -1,22 +1,23 @@
 import { useState } from "react";
-import briefSource from "../../fixtures/daily-brief.md?raw";
-import { brief, candidates, type Candidate } from "../fixtures";
-import { clock, count, inline, leadOf, parseEntries, project, readMinutes, signed, type BriefEntry } from "../brief";
-
-const entries = parseEntries(briefSource);
-const byId = new Map(candidates.map((c) => [c.id, c]));
-const sourced = new Set(entries.flatMap((e) => e.sources));
-const belowCut = candidates.filter((c) => !sourced.has(c.id)).length;
-const minutes = readMinutes(entries);
+import { type Candidate } from "../fixtures";
+import {
+  clock,
+  count,
+  inline,
+  leadOf,
+  project,
+  readMinutes,
+  signed,
+  type BriefEntry,
+} from "../brief";
+import { useBrief, type BriefView } from "../useBrief";
+import type { StoreState } from "../store";
+import type { GenerationError, PhaseEvent } from "../generation";
 
 /** Disclosure depth of one card: collapsed, explainer, source exchange. */
 type Level = 0 | 1 | 2;
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-function briefDate(): Date {
-  return new Date(brief.meta.generatedAt.replace(" ", "T"));
-}
 
 function Html({ as: Tag = "span", md, className }: { as?: "span" | "p" | "h2" | "pre"; md: string; className?: string }) {
   return <Tag className={className} dangerouslySetInnerHTML={{ __html: inline(md) }} />;
@@ -40,7 +41,19 @@ function Exchange({ c }: { c: Candidate }) {
   );
 }
 
-function Entry({ entry, index, level, onLevel }: { entry: BriefEntry; index: number; level: Level; onLevel: (l: Level) => void }) {
+function Entry({
+  entry,
+  index,
+  level,
+  byId,
+  onLevel,
+}: {
+  entry: BriefEntry;
+  index: number;
+  level: Level;
+  byId: Map<string, Candidate>;
+  onLevel: (l: Level) => void;
+}) {
   const sources = entry.sources.map((id) => byId.get(id)).filter((c): c is Candidate => !!c);
   const [primary, ...others] = sources;
   const lead = primary ? leadOf(primary) : null;
@@ -117,9 +130,38 @@ function Entry({ entry, index, level, onLevel }: { entry: BriefEntry; index: num
   );
 }
 
-function Done({ onBack }: { onBack: () => void }) {
-  const date = briefDate();
+function Facts({ view }: { view: BriefView }) {
+  const since = new Date(view.since + "T00:00");
+  return (
+    <div className="facts">
+      <span>
+        Window <b>since {since.toLocaleDateString([], { month: "short", day: "numeric" })}</b>
+      </span>
+      <span>
+        <b>{view.tools}</b>
+      </span>
+      <span>
+        <b>{view.sessions}</b> sessions
+      </span>
+      <span>
+        <b>{view.pairs}</b> pairs
+      </span>
+      <span>
+        <b>{view.candidateCount}</b> candidates
+      </span>
+      <span>
+        written by <b>{view.inferenceCli ?? "recap"}</b>
+        {view.generatedAt ? ` at ${view.generatedAt}` : ""}
+      </span>
+    </div>
+  );
+}
+
+function Done({ view, onBack }: { view: BriefView; onBack: () => void }) {
+  const entries = view.entries;
+  const date = new Date(view.date + "T00:00");
   const today = (date.getDay() + 6) % 7;
+  const minutes = readMinutes(entries);
   return (
     <div className="sheet">
       <div className="kicker">
@@ -163,47 +205,213 @@ function Done({ onBack }: { onBack: () => void }) {
   );
 }
 
-export default function DailyBrief() {
-  const [levels, setLevels] = useState<Level[]>(() => entries.map(() => 0));
-  const [done, setDone] = useState(false);
-  const { meta } = brief;
-  const date = briefDate();
+/** The spec's progress panel: phase, elapsed, and Cancel, replacing the card
+ *  list while a generation runs. Degrades to an indeterminate phase when the
+ *  engine sends no events (an older sidecar). */
+function Generating({
+  phase,
+  elapsed,
+  onCancel,
+}: {
+  phase: PhaseEvent | null;
+  elapsed: number;
+  onCancel: () => void;
+}) {
+  const secs = Math.floor(elapsed / 1000);
+  const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  const line =
+    phase === null
+      ? "Running today's recap…"
+      : phase.event === "scan_done"
+        ? `Scanned ${phase.sessions ?? "?"} sessions — picking what to learn from ${phase.candidates ?? "?"} candidates…`
+        : `Writing with ${phase.cli ?? "the inference CLI"}…`;
+  return (
+    <div className="sheet gen-sheet">
+      <div className="kicker">Daily brief · generation</div>
+      <div className="gen-phase">
+        <span className="gen-dot" aria-hidden />
+        {line}
+      </div>
+      <div className="gen-elapsed">
+        <b>{clock}</b> elapsed
+        {phase?.timeout_s ? ` · timeout ${phase.timeout_s}s` : ""}
+      </div>
+      <button className="button" onClick={onCancel}>
+        Cancel
+      </button>
+      <p className="quiet-note">
+        The engine is reading the scanned window and asking the inference CLI to
+        write it up. Cancelling stops the whole process tree.
+      </p>
+    </div>
+  );
+}
 
-  if (done)
+/** The spec's error-state table, one card per row. */
+function ErrorCard({ error, onRetry, onDismiss }: { error: GenerationError; onRetry: () => void; onDismiss: () => void }) {
+  const [open, setOpen] = useState(false);
+  const recourse =
+    error.kind === "no-cli"
+      ? "Install a CLI, or set a custom path in Settings."
+      : error.kind === "timeout"
+        ? "Raise the timeout in Settings and retry."
+        : "Retry, or widen the window and rescan.";
+  return (
+    <div className="sheet gen-sheet">
+      <div className="kicker">Daily brief · generation</div>
+      <h1 className="display">{error.title}</h1>
+      <p className="dek">{recourse}</p>
+      {error.detail && (
+        <>
+          <button className="text-button" onClick={() => setOpen(!open)}>
+            {open ? "Hide the raw output ↑" : "Show the raw output ↓"}
+          </button>
+          {open && <pre className="error-detail">{error.detail}</pre>}
+        </>
+      )}
+      <div className="closing">
+        <button className="button primary" onClick={onRetry}>
+          Retry
+        </button>
+        <button className="button" onClick={onDismiss}>
+          Back
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ScanningSheet() {
+  return (
+    <div className="folio-scroll">
+      <div className="sheet gen-sheet">
+        <div className="kicker">Daily brief</div>
+        <div className="gen-phase">
+          <span className="gen-dot" aria-hidden />
+          Scanning sessions…
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function DailyBrief({ store }: { store: StoreState | null }) {
+  const { status, view, error, phase, elapsed, detection, generate, cancel, dismissError } = useBrief(store);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [done, setDone] = useState(false);
+
+  if (status === "loading") {
+    return <ScanningSheet />;
+  }
+
+  if (status === "generating") {
     return (
       <div className="folio-scroll">
-        <Done onBack={() => setDone(false)} />
+        <Generating phase={phase} elapsed={elapsed} onCancel={cancel} />
       </div>
     );
+  }
+
+  if (status === "error" && error) {
+    return (
+      <div className="folio-scroll">
+        <ErrorCard error={error} onRetry={generate} onDismiss={dismissError} />
+      </div>
+    );
+  }
+
+  if (status === "empty") {
+    return (
+      <div className="folio-scroll">
+        <div className="sheet gen-sheet">
+          <div className="kicker">Daily brief</div>
+          <h1 className="display">Nothing to recap.</h1>
+          <p className="dek">
+            Nothing in the last day's sessions — your recap would be empty. That's
+            correct behavior, not a bug.
+          </p>
+          <p className="quiet-note">
+            Widen the window (for example three days) and scan again from the
+            Signal Explorer.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "cta" && store) {
+    const noCli = detection !== null && detection.cli === null;
+    return (
+      <div className="folio-scroll">
+        <div className="sheet gen-sheet">
+          <div className="kicker">Daily brief · {new Date().toLocaleDateString([], { weekday: "long" })}</div>
+          <h1 className="display">Today's brief isn't written yet.</h1>
+          <p className="dek">
+            {count(store.windowCandidates, "candidate", true)} from the last day's
+            sessions are ready to learn from. Writing the brief takes a few
+            minutes of the inference CLI's time.
+          </p>
+          <Facts
+            view={{
+              date: "",
+              entries: [],
+              since: store.since,
+              tools: "claude + codex",
+              sessions: store.sessions,
+              pairs: store.pairs,
+              candidateCount: store.windowCandidates,
+              inferenceCli: null,
+              generatedAt: null,
+              candidatesById: new Map(),
+            }}
+          />
+          {noCli ? (
+            <>
+              <h1 className="display cta-block">Generation needs the claude or codex CLI.</h1>
+              <p className="dek">Scanning and the Signal Explorer still work. Install a CLI, or set a custom path in Settings.</p>
+            </>
+          ) : (
+            <div className="closing">
+              <button className="button primary" onClick={generate}>
+                Write today's brief
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!view) {
+    return <ScanningSheet />;
+  }
+
+  const entries = view.entries;
+
+  if (done) {
+    return (
+      <div className="folio-scroll">
+        <Done view={view} onBack={() => setDone(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="folio-scroll">
       <div className="sheet">
-        <div className="kicker">Daily brief · {date.toLocaleDateString([], { weekday: "long" })}</div>
-        <h1 className="display">{date.toLocaleDateString([], { month: "long", day: "numeric" })}</h1>
+        <div className="kicker">Daily brief · {new Date(view.date + "T00:00").toLocaleDateString([], { weekday: "long" })}</div>
+        <h1 className="display">{new Date(view.date + "T00:00").toLocaleDateString([], { month: "long", day: "numeric" })}</h1>
         <p className="dek">
-          {count(entries.length, "idea", true)} from yesterday's sessions, ranked by how much they looked like learning. About{" "}
-          {count(minutes, "minute")}, then you're done.
+          {count(entries.length, "idea", true)} from the last day's sessions, ranked by how much they looked like learning. About{" "}
+          {count(readMinutes(entries), "minute")}, then you're done.
         </p>
-        <div className="facts">
-          <span>
-            Window <b>since {new Date(meta.since + "T00:00").toLocaleDateString([], { month: "short", day: "numeric" })}</b>
-          </span>
-          <span>
-            <b>{meta.tools.replace("+", " + ")}</b>
-          </span>
-          <span>
-            <b>{meta.sessions}</b> sessions
-          </span>
-          <span>
-            <b>{meta.pairs}</b> pairs
-          </span>
-          <span>
-            <b>{meta.candidates}</b> candidates
-          </span>
-          <span>
-            written by <b>{meta.inference}</b> at {meta.generatedAt.split(" ")[1]}
-          </span>
+        <div className="brief-head">
+          <Facts view={view} />
+          {store?.source === "live" && (
+            <button className="text-button" onClick={generate}>
+              Rewrite today's brief
+            </button>
+          )}
         </div>
 
         {entries.map((e, i) => (
@@ -211,18 +419,20 @@ export default function DailyBrief() {
             key={e.title}
             entry={e}
             index={i}
-            level={levels[i]}
-            onLevel={(l) => setLevels((prev) => prev.map((v, j) => (j === i ? l : v)))}
+            level={levels[i] ?? 0}
+            byId={view.candidatesById}
+            onLevel={(l) =>
+              setLevels((prev) => {
+                const next = [...prev];
+                while (next.length <= i) next.push(0);
+                next[i] = l;
+                return next;
+              })
+            }
           />
         ))}
 
         <div className="brief-end">
-          {belowCut > 0 && (
-            <p className="quiet-note">
-              {count(belowCut, "more candidate", true)} from today scored below the cut. They're in
-              the Signal Explorer.
-            </p>
-          )}
           <button className="button primary" onClick={() => setDone(true)}>
             I'm done for today
           </button>

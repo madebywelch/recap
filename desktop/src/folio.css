@@ -719,3 +719,131 @@ code {
     transition: none;
   }
 }
+
+/* --- M3: generation flow + Settings, the sheet vocabulary --- */
+
+.gen-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  align-items: flex-start;
+  max-width: 60ch;
+}
+
+.gen-sheet .display {
+  font-size: var(--t-title);
+}
+
+.cta-block {
+  margin-top: var(--s5);
+}
+
+.gen-phase {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font: 500 var(--t-lead) / var(--lh-body) var(--font-serif);
+  color: var(--ink);
+}
+
+.gen-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+  animation: gen-pulse 1.2s var(--ease) infinite;
+}
+
+@keyframes gen-pulse {
+  0%,
+  100% {
+    transform: scale(0.75);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.gen-elapsed {
+  font: 400 var(--t-meta) / 1.4 var(--font-mono);
+  color: var(--ink-2);
+}
+
+.error-detail {
+  font: 400 var(--t-mono) / 1.55 var(--font-mono);
+  color: var(--ink-2);
+  background: var(--code-bg);
+  border-radius: var(--r-md);
+  padding: var(--s4);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40ch;
+  overflow-y: auto;
+}
+
+.brief-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.settings-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  max-width: 60ch;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.settings-row select,
+.settings-row input {
+  font: 400 var(--t-ui) / 1.4 var(--font-ui);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+}
+
+.settings-row input[type="text"] {
+  min-width: 28ch;
+}
+
+.settings-row input[type="number"] {
+  width: 8ch;
+  font-family: var(--font-mono);
+}
+
+.settings-hint {
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+
+.settings-error {
+  font-size: var(--t-ui);
+  color: var(--neg);
+}
+
+.path-dirs {
+  margin: 0;
+  padding-left: var(--s5);
+  font: 400 var(--t-mono) / 1.7 var(--font-mono);
+  color: var(--ink-2);
+}

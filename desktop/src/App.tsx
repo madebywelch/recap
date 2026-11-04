@@ -3,15 +3,17 @@ import DailyBrief from "./screens/DailyBrief";
 import SignalExplorer from "./screens/SignalExplorer";
 import ConceptLibrary from "./screens/ConceptLibrary";
 import Review from "./screens/Review";
+import SettingsScreen from "./screens/Settings";
 import { initStore, type StoreState } from "./store";
 
-type Screen = "brief" | "library" | "signals" | "review";
+type Screen = "brief" | "library" | "signals" | "review" | "settings";
 
 const NAV: { id: Screen; label: string }[] = [
   { id: "brief", label: "Daily Brief" },
   { id: "library", label: "Concept Library" },
   { id: "signals", label: "Signal Explorer" },
   { id: "review", label: "Review" },
+  { id: "settings", label: "Settings" },
 ];
 
 export default function App() {
@@ -56,10 +58,11 @@ export default function App() {
         </div>
       </aside>
       <main className="content">
-        {screen === "brief" && <DailyBrief />}
+        {screen === "brief" && <DailyBrief store={store} />}
         {screen === "library" && <ConceptLibrary />}
         {screen === "signals" && <SignalExplorer store={store} />}
         {screen === "review" && <Review />}
+        {screen === "settings" && <SettingsScreen />}
       </main>
     </div>
   );
