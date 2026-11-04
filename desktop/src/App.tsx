@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DailyBrief from "./screens/DailyBrief";
 import SignalExplorer from "./screens/SignalExplorer";
 import ConceptLibrary from "./screens/ConceptLibrary";
 import Review from "./screens/Review";
+import { initStore, type StoreState } from "./store";
 
 type Screen = "brief" | "library" | "signals" | "review";
 
@@ -15,6 +16,19 @@ const NAV: { id: Screen; label: string }[] = [
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("brief");
+  const [store, setStore] = useState<StoreState | null>(null);
+
+  // The spec's launch flow: scan on open so the Explorer (and the store)
+  // reflect this machine's sessions, falling back to the fixture.
+  useEffect(() => {
+    let cancelled = false;
+    initStore().then((state) => {
+      if (!cancelled) setStore(state);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="app">
@@ -33,12 +47,18 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-foot">running on committed fixtures</div>
+        <div className="sidebar-foot">
+          {store
+            ? store.source === "live"
+              ? "live · engine sidecar"
+              : "fixture data"
+            : "scanning…"}
+        </div>
       </aside>
       <main className="content">
         {screen === "brief" && <DailyBrief />}
         {screen === "library" && <ConceptLibrary />}
-        {screen === "signals" && <SignalExplorer />}
+        {screen === "signals" && <SignalExplorer store={store} />}
         {screen === "review" && <Review />}
       </main>
     </div>
