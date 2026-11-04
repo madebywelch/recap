@@ -31,6 +31,8 @@ export interface StoreState {
    *  write-the-brief decision. */
   sessions: number;
   pairs: number;
+  /** The tools the launch scan read, in scan order ("claude", "codex", "pi"). */
+  tools: string[];
   /** Candidates the launch scan kept for this window. */
   windowCandidates: number;
   /** Set when a live scan was attempted and failed; the fixture is shown. */
@@ -194,6 +196,7 @@ function fixtureStore(error?: string): StoreState {
     candidates: scan.candidates,
     sessions: scan.sessions,
     pairs: scan.pairs,
+    tools: scan.tools,
     windowCandidates: scan.candidates.length,
     error,
   };
@@ -306,6 +309,7 @@ export async function initStore(): Promise<StoreState> {
       candidates,
       sessions: scan.sessions,
       pairs: scan.pairs,
+      tools: scan.tools,
       windowCandidates: scan.candidates.length,
     };
   } catch (e) {
@@ -321,6 +325,7 @@ export async function initStore(): Promise<StoreState> {
         candidates: [],
         sessions: 0,
         pairs: 0,
+        tools: [],
         windowCandidates: 0,
         refusal,
       };

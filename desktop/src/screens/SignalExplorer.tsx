@@ -12,12 +12,12 @@ import {
   userSignals,
   type ExplorerFilters,
 } from "../explorer-filters";
-import type { Candidate, Signal } from "../fixtures";
+import { TOOLS, TOOL_LABELS, type Candidate, type Signal } from "../fixtures";
 import { count, parseEntries, project, signed } from "../brief";
 
 const FIXTURE_IN_BRIEF = new Set(parseEntries(briefSource).flatMap((e) => e.sources));
 
-const TOOLS: ExplorerFilters["tool"][] = ["all", "claude", "codex"];
+const TOOL_FILTERS: ExplorerFilters["tool"][] = ["all", ...TOOLS];
 
 function num(n: number): string {
   return n < 0 ? `−${Math.abs(n)}` : String(n);
@@ -72,14 +72,14 @@ function Filters({
           <b>{num(filters.minScore)}</b>
         </label>
         <div className="seg" role="group" aria-label="Tool">
-          {TOOLS.map((t) => (
+          {TOOL_FILTERS.map((t) => (
             <button
               key={t}
               className={filters.tool === t ? "on" : ""}
               aria-pressed={filters.tool === t}
               onClick={() => onChange({ ...filters, tool: t })}
             >
-              {t === "all" ? "All" : t}
+              {t === "all" ? "All" : TOOL_LABELS[t]}
             </button>
           ))}
         </div>
@@ -335,7 +335,7 @@ export default function SignalExplorer({
           ))}
           {store.candidates.length === 0 ? (
             <p className="quiet-note xempty">
-              The last scan found no learning moments in this window. New Claude Code and Codex sessions show up here after
+              The last scan found no learning moments in this window. New Claude Code, Codex and Pi sessions show up here after
               the next scan.
             </p>
           ) : (

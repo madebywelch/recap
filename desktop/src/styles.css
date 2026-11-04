@@ -559,21 +559,24 @@ button {
   position: fixed;
   inset: 0;
   z-index: 40;
-  display: grid;
-  place-items: center;
+  display: flex;
+  overflow-y: auto;
   padding: var(--s6);
 }
 
 /* the desk at partial opacity, as its own layer so the sheet stays opaque */
 .first-run-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: var(--desk);
   opacity: 0.82;
 }
 
+/* auto margins center the sheet, and unlike place-items: center they never
+   push an oversize sheet past the top, so a short window scrolls to it */
 .first-run .sheet {
   position: relative;
+  margin: auto;
   max-width: 620px;
   min-height: 0;
   padding: var(--s7) var(--s7) var(--s6);

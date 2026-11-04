@@ -4,15 +4,18 @@ import corruptedSource from "../fixtures/engine-scan-corrupted.json";
 import {
   EnvelopeError,
   SUPPORTED_ENGINE_MAJOR,
+  TOOLS,
   validateScanResult,
+  validateSourcesResult,
 } from "./fixtures";
 
 describe("validateScanResult", () => {
   it("accepts the committed engine fixture", () => {
     const scan = validateScanResult(realSource);
-    expect(scan.engineVersion).toBe("1.0.0");
-    expect(scan.candidates).toHaveLength(12);
-    expect(scan.sessions).toBe(6);
+    expect(scan.engineVersion).toBe("1.1.0");
+    expect(scan.candidates).toHaveLength(15);
+    expect(scan.sessions).toBe(8);
+    expect(scan.tools).toEqual(["claude", "codex", "pi"]);
   });
 
   it("rejects the deliberately corrupted fixture", () => {
@@ -56,5 +59,38 @@ describe("validateScanResult", () => {
     expect(() => validateScanResult(badType)).toThrow(EnvelopeError);
     const noList = { ...scan, candidates: null };
     expect(() => validateScanResult(noList)).toThrow(EnvelopeError);
+  });
+
+  it("accepts every engine tool, Pi included, and rejects unknown ones", () => {
+    const scan = validateScanResult(realSource);
+    expect(new Set(scan.candidates.map((c) => c.tool))).toEqual(new Set(TOOLS));
+    const unknown = { ...scan, candidates: [{ ...scan.candidates[0], tool: "gemini" }] };
+    expect(() => validateScanResult(unknown)).toThrow(/candidate.tool must be one of claude, codex, pi/);
+  });
+});
+
+describe("validateSourcesResult", () => {
+  const sources = {
+    engineVersion: "1.1.0",
+    since: "2026-11-03",
+    sources: [
+      { tool: "claude", root: "/Users/r/.claude/projects", found: true, sessions: 412, recentSessions: 3 },
+      { tool: "codex", root: "/Users/r/.codex/sessions", found: true, sessions: 57, recentSessions: 1 },
+      { tool: "pi", root: "/Users/r/.pi/agent/sessions", found: false, sessions: 0, recentSessions: 0 },
+    ],
+  };
+
+  it("accepts the recap --sources envelope", () => {
+    const res = validateSourcesResult(sources);
+    expect(res.sources.map((s) => s.tool)).toEqual(["claude", "codex", "pi"]);
+    expect(res.sources[0].recentSessions).toBe(3);
+  });
+
+  it("enforces the version handshake and the shape", () => {
+    expect(() => validateSourcesResult({ ...sources, engineVersion: "2.0.0" })).toThrow(/newer than this app/);
+    const badFound = { ...sources, sources: [{ ...sources.sources[0], found: "yes" }] };
+    expect(() => validateSourcesResult(badFound)).toThrow(EnvelopeError);
+    const badCount = { ...sources, sources: [{ ...sources.sources[0], sessions: 1.5 }] };
+    expect(() => validateSourcesResult(badCount)).toThrow(EnvelopeError);
   });
 });

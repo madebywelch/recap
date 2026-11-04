@@ -19,8 +19,9 @@ func main() {
 	var (
 		days       = flag.Int("days", 1, "how many days back to scan")
 		sinceFlag  = flag.String("since", "", "absolute date YYYY-MM-DD (overrides --days)")
-		toolFlag   = flag.String("tool", "both", "session source: claude | codex | both")
-		inferFlag  = flag.String("inference", "auto", "inference CLI: claude | codex | auto | /path/to/cli")
+		toolFlag   = flag.String("tool", "all", "session source: claude | codex | pi | both (claude+codex) | all")
+		inferFlag  = flag.String("inference", "auto", "inference CLI: claude | codex | pi | auto | /path/to/cli")
+		sources    = flag.Bool("sources", false, "print each session source's directory and session counts as JSON, then exit")
 		rawFlag    = flag.Bool("raw", false, "skip inference; print scored candidates as JSON")
 		minScore   = flag.Int("min-score", 2, "minimum candidate score to keep")
 		topN       = flag.Int("top", 30, "max candidates to send to inference (0 = all)")
@@ -39,26 +40,30 @@ func main() {
 		since = t
 	}
 
-	tools := []string{}
-	switch *toolFlag {
-	case "both":
-		tools = []string{"claude", "codex"}
-	case "claude", "codex":
-		tools = []string{*toolFlag}
-	default:
-		die("--tool must be claude | codex | both")
-	}
-
-	res, err := engine.Collect(engine.Options{
+	opts := engine.Options{
 		Days:     *days,
 		Since:    since,
 		Tool:     *toolFlag,
 		MinScore: *minScore,
 		Top:      *topN,
-	})
+	}
+
+	if *sources {
+		found, err := engine.DetectSources(opts)
+		if err != nil {
+			die("%v", err)
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(found)
+		return
+	}
+
+	res, err := engine.Collect(opts)
 	if err != nil {
 		die("%v", err)
 	}
+	tools := res.Tools
 
 	for _, w := range res.Warnings {
 		fmt.Fprintf(os.Stderr, "warn: %s scan failed: %v\n", w.Tool, w.Err)

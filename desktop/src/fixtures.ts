@@ -26,9 +26,20 @@ export interface Signal {
  * side decides whether a pair is a learning moment, the assistant side at
  * most doubles one. signal_strings is the compact "name:+N" form the CLI
  * has always printed; consumers of signals can ignore it. */
+/** The session sources the engine reads (engine.Tools), in scan order. */
+export const TOOLS = ["claude", "codex", "pi"] as const;
+export type Tool = (typeof TOOLS)[number];
+
+/** Display names for the harnesses behind each tool id. */
+export const TOOL_LABELS: Record<Tool, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  pi: "Pi",
+};
+
 export interface Candidate {
   id: string;
-  tool: "claude" | "codex";
+  tool: Tool;
   sessionId: string;
   cwd?: string;
   ts: string;
@@ -98,6 +109,25 @@ function requireStringArray(obj: Record<string, unknown>, key: string, what: str
   return v as string[];
 }
 
+function isTool(value: string): value is Tool {
+  return (TOOLS as readonly string[]).includes(value);
+}
+
+/** The version handshake every envelope passes: a newer major is refused. */
+function requireSupportedVersion(env: Record<string, unknown>): string {
+  const engineVersion = requireString(env, "engineVersion", "engineVersion");
+  const major = Number(engineVersion.split(".")[0]);
+  if (!Number.isInteger(major) || major < 0) {
+    throw new EnvelopeError(`engineVersion "${engineVersion}" is not a version string`);
+  }
+  if (major > SUPPORTED_ENGINE_MAJOR) {
+    throw new EnvelopeError(
+      `engine version ${engineVersion} is newer than this app understands (major ${SUPPORTED_ENGINE_MAJOR}); refusing to render`,
+    );
+  }
+  return engineVersion;
+}
+
 function validateSignal(data: unknown): Signal {
   const s = requireObject(data, "signal");
   const side = requireString(s, "side", "signal.side");
@@ -114,8 +144,8 @@ function validateSignal(data: unknown): Signal {
 function validateCandidate(data: unknown): Candidate {
   const c = requireObject(data, "candidate");
   const tool = requireString(c, "tool", "candidate.tool");
-  if (tool !== "claude" && tool !== "codex") {
-    throw new EnvelopeError(`candidate.tool must be "claude" or "codex", got "${tool}"`);
+  if (!isTool(tool)) {
+    throw new EnvelopeError(`candidate.tool must be one of ${TOOLS.join(", ")}, got "${tool}"`);
   }
   if (c.cwd !== undefined && typeof c.cwd !== "string") {
     throw new EnvelopeError("candidate.cwd must be a string when present");
@@ -146,24 +176,52 @@ function validateCandidate(data: unknown): Candidate {
  */
 export function validateScanResult(data: unknown): ScanResult {
   const env = requireObject(data, "envelope");
-  const engineVersion = requireString(env, "engineVersion", "engineVersion");
-  const major = Number(engineVersion.split(".")[0]);
-  if (!Number.isInteger(major) || major < 0) {
-    throw new EnvelopeError(`engineVersion "${engineVersion}" is not a version string`);
-  }
-  if (major > SUPPORTED_ENGINE_MAJOR) {
-    throw new EnvelopeError(
-      `engine version ${engineVersion} is newer than this app understands (major ${SUPPORTED_ENGINE_MAJOR}); refusing to render`,
-    );
-  }
   return {
-    engineVersion,
+    engineVersion: requireSupportedVersion(env),
     scannedAt: requireString(env, "scannedAt", "scannedAt"),
     since: requireString(env, "since", "since"),
     tools: requireStringArray(env, "tools", "tools"),
     sessions: requireInt(env, "sessions", "sessions"),
     pairs: requireInt(env, "pairs", "pairs"),
     candidates: requireArray(env, "candidates", "candidates").map(validateCandidate),
+  };
+}
+
+/** One session source as `recap --sources` reports it: the transcript
+ *  directory, whether it exists, its session files, and how many of them
+ *  fall in the scan window. Tools this build doesn't know pass through as
+ *  plain strings, since the engine may add sources within a major. */
+export interface Source {
+  tool: string;
+  root: string;
+  found: boolean;
+  sessions: number;
+  recentSessions: number;
+}
+
+/** The `recap --sources` envelope (docs/engine-json.md). */
+export interface SourcesResult {
+  engineVersion: string;
+  since: string;
+  sources: Source[];
+}
+
+export function validateSourcesResult(data: unknown): SourcesResult {
+  const env = requireObject(data, "sources envelope");
+  return {
+    engineVersion: requireSupportedVersion(env),
+    since: requireString(env, "since", "since"),
+    sources: requireArray(env, "sources", "sources").map((item) => {
+      const s = requireObject(item, "source");
+      if (typeof s.found !== "boolean") throw new EnvelopeError("source.found must be a boolean");
+      return {
+        tool: requireString(s, "tool", "source.tool"),
+        root: requireString(s, "root", "source.root"),
+        found: s.found,
+        sessions: requireInt(s, "sessions", "source.sessions"),
+        recentSessions: requireInt(s, "recentSessions", "source.recentSessions"),
+      };
+    }),
   };
 }
 

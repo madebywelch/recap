@@ -1,21 +1,27 @@
 import { useEffect, useState } from "react";
+import type { SourcesResult } from "../fixtures";
 import {
   detectInference,
+  detectSources,
   getSettings,
   setSettings,
   type Detection,
   type Settings,
 } from "../generation";
+import Harnesses from "./Harnesses";
 
 /**
  * Settings per docs/desktop-app-spec.md §Inference: the inference CLI
- * (auto / claude / codex / a custom path), the generation timeout, the
- * augmented PATH the sidecar is spawned with, and the preflight detection
- * so "no CLI installed" is never a surprise mid-generation.
+ * (auto / claude / codex / pi / a custom path), the generation timeout,
+ * the augmented PATH the sidecar is spawned with, and what this machine
+ * has per harness — transcripts and CLI — so "no CLI installed" is never
+ * a surprise mid-generation.
  */
 export default function SettingsScreen() {
   const [settings, setSettingsState] = useState<Settings | null>(null);
   const [detection, setDetection] = useState<Detection | null>(null);
+  const [sources, setSources] = useState<SourcesResult | null>(null);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +36,9 @@ export default function SettingsScreen() {
       .catch(() => {
         if (alive) setError("Settings live in the app shell — run the app, not the browser build.");
       });
+    detectSources()
+      .then((found) => alive && setSources(found))
+      .catch((e) => alive && setSourcesError(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
     };
@@ -76,9 +85,10 @@ export default function SettingsScreen() {
                 update({ inference_cli: e.target.value as Settings["inference_cli"] })
               }
             >
-              <option value="auto">auto — prefer claude, fall back to codex</option>
+              <option value="auto">auto — the first installed of claude, codex, pi</option>
               <option value="claude">claude</option>
               <option value="codex">codex</option>
+              <option value="pi">pi</option>
               <option value="custom">custom path</option>
             </select>
             {settings.inference_cli === "custom" && (
@@ -98,21 +108,15 @@ export default function SettingsScreen() {
         </div>
 
         <div className="settings-group">
-          <div className="label">Preflight</div>
-          <div className="settings-row detection">
-            {detection === null ? (
-              <span className="settings-hint">Checking the app's PATH…</span>
-            ) : detection.cli ? (
-              <span>
-                <b>{detection.cli}</b> — {detection.path}
-              </span>
-            ) : (
-              <span>
-                None found on the app's PATH (checked {detection.considered.join(", ")}).
-                Generation will say so when it runs; scanning and the Signal Explorer
-                still work.
-              </span>
-            )}
+          <div className="label">Detected on this machine</div>
+          <Harnesses detection={detection} sources={sources} sourcesError={sourcesError} />
+          <div className="settings-hint">
+            {detection === null
+              ? "Checking the app's PATH…"
+              : detection.cli
+                ? `The brief will be written by ${detection.cli} (${detection.path}).`
+                : `No CLI for this setting on the app's PATH (checked ${detection.considered.join(", ")}). Generation will say so when it runs; scanning and the Signal Explorer still work.`}
+            {sourcesError && ` Transcript check failed: ${sourcesError}`}
           </div>
         </div>
 
@@ -134,9 +138,11 @@ export default function SettingsScreen() {
         <div className="settings-group">
           <div className="label">Augmented PATH</div>
           <p className="settings-hint">
-            GUI-launched apps see a minimal PATH, so the shell puts these in front
-            of the inherited PATH before spawning the engine — that's where it
-            looks for the inference CLI.
+            GUI-launched apps see a minimal PATH, so the app asks your login shell
+            for its PATH{detection && !detection.login_shell ? " (it didn't answer this time)" : ""},
+            adds the common install locations, and puts both in front of the
+            inherited PATH before spawning the engine — that's where it looks for
+            the inference CLI.
           </p>
           {detection && (
             <ul className="path-dirs">

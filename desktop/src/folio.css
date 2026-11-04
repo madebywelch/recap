@@ -849,6 +849,64 @@ code {
   font: 400 var(--t-mono) / 1.7 var(--font-mono);
   color: var(--ink-2);
 }
+.harnesses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s3);
+}
+
+.harness {
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-sm);
+  padding: var(--s2) var(--s3);
+}
+
+.harness.writes {
+  border-color: var(--ink-3);
+}
+
+.harness-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font: 600 var(--t-ui) / 1.4 var(--font-ui);
+  color: var(--ink);
+}
+
+.harness-badge {
+  font: 400 var(--t-meta) / 1.4 var(--font-ui);
+  color: var(--ink-3);
+}
+
+.harness-line {
+  display: flex;
+  gap: var(--s2);
+  font: 400 var(--t-meta) / 1.6 var(--font-ui);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.harness-kind {
+  flex: none;
+  width: 10ch;
+  color: var(--ink-3);
+}
+
+.harness-line code {
+  font: 400 var(--t-mono) / 1.6 var(--font-mono);
+  color: var(--ink-3);
+}
+
+.harness-missing {
+  color: var(--ink-3);
+}
+
+.harness-warn {
+  color: var(--neg);
+}
+
 /* --- scrollbars: thin rules that sit on the desk --- */
 
 ::-webkit-scrollbar {

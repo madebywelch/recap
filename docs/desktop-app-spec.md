@@ -66,7 +66,7 @@ export interface Signal {
 
 export interface Candidate {
   id: string;            // stable across rescans of the same window (see below)
-  tool: "claude" | "codex";
+  tool: "claude" | "codex" | "pi";
   sessionId: string;
   cwd: string | null;
   ts: string;            // RFC3339
@@ -82,7 +82,7 @@ export interface ScanResult {
   engineVersion: string;
   scannedAt: string;     // RFC3339
   since: string;         // YYYY-MM-DD
-  tools: Array<"claude" | "codex">;
+  tools: Array<"claude" | "codex" | "pi">;
   sessions: number;
   pairs: number;
   candidates: Candidate[];
@@ -209,13 +209,13 @@ Local-first throughout: no accounts, no cloud, no telemetry. The app itself make
 
 ## Inference in a desktop context
 
-**Detection.** The engine detects `claude`/`codex` via `PATH` lookup — which breaks in the classic desktop way: an app launched from Finder/Dock gets a minimal GUI environment PATH and won't see `~/.local/bin` or npm-global installs. The app therefore owns the environment it spawns the sidecar with: it augments `PATH` with the common install locations (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, the user's npm global bin if discoverable) before spawning, and Settings exposes **Inference CLI: auto | claude | codex | custom path**, passed through as `--inference`. Preflight surfaces detection results *before* generation: Settings shows which CLI was found and where, so "no CLI installed" is never a surprise mid-generation.
+**Detection.** The engine detects `claude`/`codex` via `PATH` lookup — which breaks in the classic desktop way: an app launched from Finder/Dock gets a minimal GUI environment PATH and won't see `~/.local/bin` or npm-global installs. The app therefore owns the environment it spawns the sidecar with: it augments `PATH` with the common install locations (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, the user's npm global bin if discoverable) before spawning, and Settings exposes **Inference CLI: auto | claude | codex | pi | custom path**, passed through as `--inference`. Preflight surfaces detection results *before* generation: Settings lists every supported CLI with its resolved path and version, marks the one that will write the brief, and shows each transcript source with its session counts, so "no CLI installed" is never a surprise mid-generation. (Pi support and the login-shell PATH came with ROB-71.)
 
 **States during generation.** The progress panel on Daily Brief shows the current phase and elapsed time, with a Cancel button. The engine emits phase transitions on stderr as single-line JSON events — `{"event":"scan_done","sessions":12,"pairs":340,"candidates":58}` and `{"event":"inference_start","cli":"claude","timeout_s":240}` — which is the only engine addition here, and the app degrades gracefully to an indeterminate spinner if events are absent (old sidecar).
 
 | State | Display | User recourse |
 | --- | --- | --- |
-| No CLI installed | Blocking panel on generation: "Generation needs the `claude` or `codex` CLI. Scanning and the Signal Explorer still work." | Install a CLI, or set a custom path in Settings |
+| No CLI installed | Blocking panel on generation: "Generation needs the `claude`, `codex` or `pi` CLI. Scanning and the Signal Explorer still work." | Install a CLI, or set a custom path in Settings |
 | Explicit CLI not on PATH | Same panel, naming the missing CLI | Fix path or switch to auto |
 | Running | Phase + elapsed + candidates count + CLI in use | Cancel |
 | Timeout (default 240s, configurable 60–900s) | "Timed out after Ns — the CLI didn't finish." | Raise timeout in Settings and retry |

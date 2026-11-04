@@ -1,13 +1,14 @@
 {
-  "engineVersion": "1.0.0",
-  "scannedAt": "2026-11-04T04:08:40.664998963Z",
+  "engineVersion": "1.1.0",
+  "scannedAt": "2026-11-04T20:09:47.541686725Z",
   "since": "2026-11-02",
   "tools": [
     "claude",
-    "codex"
+    "codex",
+    "pi"
   ],
-  "sessions": 6,
-  "pairs": 16,
+  "sessions": 8,
+  "pairs": 20,
   "candidates": [
     {
       "id": "20a4768e4f88e03b",
@@ -15,7 +16,6 @@
       "sessionId": "0e7b7c82-1f45-4d3e-9a02-b1f3a58bde01",
       "cwd": "/Users/robert/work/ledger-api",
       "ts": "2026-11-02T09:14:03-05:00",
-      "userMessage": "why does sqlite keep saying database is locked when it's just one process? I don't understand how locking works here",
       "assistantExcerpt": "Locked with a single process usually means there are more connections than you think, not that SQLite is broken. In the default rollback-journal mode a write takes an exclusive lock over the whole database file for the duration of the commit, so even a read opened at the wrong moment can collide with it. Your migration runner is the classic culprit: it opens its own connection, runs `BEGIN`, and if that transaction is still uncommitted when the application's connection tries to write, the second writer gets `SQLITE_BUSY`, which the driver surfaces as `database is locked`. One process, two connections, one transaction left open. The fix is two-fold. First, switch journal modes with `PRAGMA journal_mode=WAL;` - in write-ahead logging, readers get a snapshot of the database file while a single writer appends to the -wal file, so readers stop blocking the writer (there is still exactly one writer at a time, which is a SQLite invariant, not a mode setting). Second, set `busy_timeout` so a colliding writer waits a few seconds instead of failing immediately. And check for a leaked transaction: a `BEGIN` whose `COMMIT` was skipped by an early return holds the write lock until the connection closes. Rule of thumb: `database is locked` with one process means a connection you forgot about, so hunt for the second handle or the unfinished transaction before blaming SQLite.",
       "score": 10,
       "userScore": 6,
@@ -61,6 +61,7 @@
       "sessionId": "rollout-2026-11-02T16-08-44-3f1c9b2e-a4d7-4c19-9f2b-6a8d5b0e2c17",
       "cwd": "/Users/robert/work/deploy-scripts",
       "ts": "2026-11-02T16:10:02-05:00",
+      "userMessage": "what's the difference between ${DEPLOY_ENV} and quoting it in the deploy script? confused why the var shows up empty in the log",
       "assistantExcerpt": "The difference is when the expansion happens, and by whom. Inside double quotes, `\"${DEPLOY_ENV}\"` is expanded by the shell when it runs the script, because assignment and expansion happen left to right at execution time - so the value is whatever `DEPLOY_ENV` holds at that line, and it is missing from your log because the variable is set in the deploy job's environment but not exported, which means the child script never sees it. Inside single quotes nothing is expanded at all - the script literally contains the string `${DEPLOY_ENV}` and ssh or docker exec expands it on the far side. `set -x` in the log shows the pre-expansion text, so a single-quoted variable logs as its own name. Print the environment the script actually received with `env | grep DEPLOY` first; if it's absent there, the bug is in the caller's `export`, not in the quoting.",
       "score": 9,
       "userScore": 6,
@@ -69,7 +70,7 @@
         {
           "name": "wh-question",
           "weight": 3,
-          "side": "user"
+          "side": "system"
         },
         {
           "name": "confusion",
@@ -115,7 +116,7 @@
         {
           "name": "wh-question",
           "weight": 3,
-          "side": "system"
+          "side": "user"
         },
         {
           "name": "confusion",
@@ -353,6 +354,80 @@
       ]
     },
     {
+      "id": "5d1c2f696c413310",
+      "tool": "pi",
+      "sessionId": "2026-11-02T16-05-12-204Z_4e8b1c2d-7a90-4f35-b6e1-0c9d2a7f5b13",
+      "cwd": "/Users/robert/work/recap",
+      "ts": "2026-11-02T16:06:40.118Z",
+      "userMessage": "why can't the app see codex when I launch it from the Dock? it works in my terminal",
+      "assistantExcerpt": "Because apps launched from Finder or the Dock are started by launchd, not by your shell, so they never run ~/.zprofile or ~/.zshrc. They inherit launchd's minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin), which means anything Homebrew, nvm or npm put on your PATH is invisible to them. The terminal works because it starts a login shell that sources those files. The robust fix is to ask the user's login shell once - run `$SHELL -lic env` with a timeout - and use the PATH it prints, falling back to known install dirs like `/opt/homebrew/bin`. Rule of thumb: a GUI app should never assume it shares the terminal's environment.",
+      "score": 6,
+      "userScore": 3,
+      "assistantBonus": 3,
+      "signals": [
+        {
+          "name": "wh-question",
+          "weight": 3,
+          "side": "user"
+        },
+        {
+          "name": "assistant-depth",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-explains",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "wh-question:+3",
+        "assistant-depth:+1",
+        "assistant-code:+1",
+        "assistant-explains:+1"
+      ]
+    },
+    {
+      "id": "b1de448583d45cc7",
+      "tool": "pi",
+      "sessionId": "2026-11-02T16-05-12-204Z_4e8b1c2d-7a90-4f35-b6e1-0c9d2a7f5b13",
+      "cwd": "/Users/robert/work/recap",
+      "ts": "2026-11-02T16:12:02.551Z",
+      "userMessage": "how does LookPath pick between two binaries with the same name?",
+      "assistantExcerpt": "`exec.LookPath` walks PATH left to right and returns the first match that is a regular file with an execute bit, so the earlier directory wins. Under the hood it stats each candidate; it does not compare versions. That is why putting the login shell's PATH first matters: it makes the app resolve the same `codex` that `which codex` does in your terminal.",
+      "score": 5,
+      "userScore": 3,
+      "assistantBonus": 2,
+      "signals": [
+        {
+          "name": "wh-question",
+          "weight": 3,
+          "side": "user"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        },
+        {
+          "name": "assistant-explains",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "wh-question:+3",
+        "assistant-code:+1",
+        "assistant-explains:+1"
+      ]
+    },
+    {
       "id": "79d43f08c948ebd4",
       "tool": "claude",
       "sessionId": "0e7b7c82-1f45-4d3e-9a02-b1f3a58bde01",
@@ -406,6 +481,34 @@
       "signal_strings": [
         "wh-question:+3",
         "assistant-explains:+1"
+      ]
+    },
+    {
+      "id": "4f73521ad6c250be",
+      "tool": "pi",
+      "sessionId": "2026-11-02T19-40-03-877Z_a17d3e5f-2b84-4c09-9e6a-58f0c1b2d4e6",
+      "cwd": "/Users/robert/work/infra",
+      "ts": "2026-11-02T19:41:15.402Z",
+      "userMessage": "what does setpgid actually buy us when we cancel the inference cli?",
+      "assistantExcerpt": "Killing the CLI's pid only signals that one process; anything it spawned is reparented to init and keeps running. Starting the CLI with `Setpgid: true` makes it the leader of a new process group, which means `kill(-pgid, SIGTERM)` reaches the CLI and every descendant in one call. SIGKILL can't be trapped, so the parent sends SIGTERM first and only escalates after a grace period.",
+      "score": 4,
+      "userScore": 3,
+      "assistantBonus": 1,
+      "signals": [
+        {
+          "name": "wh-question",
+          "weight": 3,
+          "side": "user"
+        },
+        {
+          "name": "assistant-code",
+          "weight": 1,
+          "side": "assistant"
+        }
+      ],
+      "signal_strings": [
+        "wh-question:+3",
+        "assistant-code:+1"
       ]
     },
     {

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { validateSourcesResult } from "./fixtures";
 
 /**
  * The generation flow's client: the settings the shell persists, the CLI
@@ -19,23 +20,45 @@ export interface PhaseEvent {
 }
 
 export interface Settings {
-  inference_cli: "auto" | "claude" | "custom" | "codex";
+  inference_cli: "auto" | "claude" | "codex" | "pi" | "custom";
   custom_cli_path: string;
   timeout_sec: number;
   /** First-run flag: the welcome sheet shows until dismissed. */
   onboarded: boolean;
 }
 
+/** One supported inference CLI as the app's PATH resolves it. */
+export interface CliStatus {
+  name: string;
+  /** null when it isn't installed. */
+  path: string | null;
+  /** First line of `<cli> --version`; null when missing or it didn't run. */
+  version: string | null;
+  /** Found and `--version` exited 0. Found but not running usually means a
+   *  runtime (node) the app's PATH lacks. */
+  runs: boolean;
+}
+
 export interface Detection {
+  /** The CLI the current settings hand the brief to, null if none found. */
   cli: string | null;
   path: string | null;
   considered: string[];
+  /** Every supported CLI, installed or not, in "auto" order. */
+  clis: CliStatus[];
+  /** Whether the login shell's PATH was resolved and put in front. */
+  login_shell: boolean;
   path_dirs: string[];
 }
 
 export const getSettings = () => invoke<Settings>("get_settings");
 export const setSettings = (settings: Settings) => invoke<void>("set_settings", { settings });
 export const detectInference = () => invoke<Detection>("detect_inference");
+
+/** The transcript half of detection: each tool's session directory and
+ *  counts, from `recap --sources`, validated like every engine payload. */
+export const detectSources = () =>
+  invoke<string>("detect_sources").then((raw) => validateSourcesResult(JSON.parse(raw)));
 
 /** Runs a generation and resolves with the brief markdown from the
  *  engine's stdout. Rejects with the engine's stderr (or a spawn error) —
@@ -68,10 +91,10 @@ export interface GenerationError {
 }
 
 export function classifyGenerationError(message: string): GenerationError {
-  if (/neither claude nor codex/i.test(message)) {
+  if (/no inference CLI found/i.test(message)) {
     return {
       kind: "no-cli",
-      title: "Generation needs the `claude` or `codex` CLI. Scanning and the Signal Explorer still work.",
+      title: "Generation needs the `claude`, `codex` or `pi` CLI. Scanning and the Signal Explorer still work.",
       detail: message,
     };
   }

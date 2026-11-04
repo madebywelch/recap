@@ -1,5 +1,5 @@
 // Package engine implements recap's transcript pipeline: scan local Claude
-// Code and Codex session files, pair each real user message with the
+// Code, Codex and Pi session files, pair each real user message with the
 // assistant turn that answered it, redact secrets, and score each pair for
 // "learning moment" likelihood.
 //
@@ -13,6 +13,7 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -22,10 +23,10 @@ import (
 // understands. Schema changes within a major are additive; breaking
 // changes bump the major. Overridable at build time with
 // -ldflags "-X github.com/madebywelch/recap/engine.Version=…".
-var Version = "1.0.0"
+var Version = "1.1.0"
 
 // Options mirrors the recap CLI flags. The zero value scans from midnight
-// local today, reads both tools, keeps every pair that scored non-negative,
+// local today, reads every tool, keeps every pair that scored non-negative,
 // and returns all candidates.
 type Options struct {
 	// Days is how many days back to scan; the window starts at local
@@ -34,7 +35,9 @@ type Options struct {
 	// Since is the absolute scan cutoff (files modified at or after it).
 	// Overrides Days when non-zero.
 	Since time.Time
-	// Tool selects the session source: "claude", "codex" or "both".
+	// Tool selects the session source: "claude", "codex", "pi", "both"
+	// (claude and codex, the pre-Pi default kept for CLI compatibility) or
+	// "all". Empty means "all".
 	Tool string
 	// MinScore is the minimum candidate score to keep.
 	MinScore int
@@ -146,13 +149,72 @@ func resolveSince(opts Options) time.Time {
 	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, now.Location())
 }
 
+// Tools lists every supported session source, in scan order.
+var Tools = []string{"claude", "codex", "pi"}
+
 func expandTools(tool string) ([]string, error) {
 	switch tool {
-	case "", "both":
+	case "", "all":
+		return append([]string(nil), Tools...), nil
+	case "both":
 		return []string{"claude", "codex"}, nil
-	case "claude", "codex":
+	case "claude", "codex", "pi":
 		return []string{tool}, nil
 	default:
-		return nil, fmt.Errorf("unknown tool: %s", tool)
+		return nil, fmt.Errorf("unknown tool %q: want claude, codex, pi, both or all", tool)
 	}
+}
+
+// Source is one session source as found on this machine: where its
+// transcripts live, whether that directory exists, how many session files
+// it holds, and how many of those were modified inside the scan window.
+type Source struct {
+	Tool           string `json:"tool"`
+	Root           string `json:"root"`
+	Found          bool   `json:"found"`
+	Sessions       int    `json:"sessions"`
+	RecentSessions int    `json:"recentSessions"`
+}
+
+// SourcesResult is the `recap --sources` envelope (docs/engine-json.md).
+type SourcesResult struct {
+	Since   time.Time
+	Sources []Source
+}
+
+// MarshalJSON emits engineVersion, since (YYYY-MM-DD) and sources.
+func (r SourcesResult) MarshalJSON() ([]byte, error) {
+	sources := r.Sources
+	if sources == nil {
+		sources = []Source{}
+	}
+	return json.Marshal(struct {
+		EngineVersion string   `json:"engineVersion"`
+		Since         string   `json:"since"`
+		Sources       []Source `json:"sources"`
+	}{Version, r.Since.Format("2006-01-02"), sources})
+}
+
+// DetectSources reports each selected tool's transcript directory and
+// session counts without parsing anything: the cheap half of "what is
+// installed" that a preflight screen can show before a scan.
+func DetectSources(opts Options) (SourcesResult, error) {
+	tools, err := expandTools(opts.Tool)
+	if err != nil {
+		return SourcesResult{}, err
+	}
+	since := resolveSince(opts)
+	res := SourcesResult{Since: since}
+	for _, t := range tools {
+		root, _ := toolRoot(t)
+		src := Source{Tool: t, Root: root}
+		if info, err := os.Stat(root); err == nil && info.IsDir() {
+			src.Found = true
+			all, _ := walkSessions(root, time.Time{})
+			recent, _ := scanTool(t, since)
+			src.Sessions, src.RecentSessions = len(all), len(recent)
+		}
+		res.Sources = append(res.Sources, src)
+	}
+	return res, nil
 }

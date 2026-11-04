@@ -21,8 +21,10 @@ use tauri_plugin_shell::ShellExt;
 /// The app's scan recipe from docs/desktop-app-spec.md: everything the
 /// engine scored, no cut — the same `--raw` shape the CLI prints, so the
 /// calibration data the Signal Explorer needs lands in the store intact.
-const SCAN_ARGS: [&str; 7] = [
+const SCAN_ARGS: [&str; 9] = [
     "--raw",
+    "--tool",
+    "all",
     "--days",
     "1",
     "--min-score",
@@ -34,7 +36,7 @@ const SCAN_ARGS: [&str; 7] = [
 // --- settings ---------------------------------------------------------------
 
 /// The user's generation preferences (docs/desktop-app-spec.md §Inference).
-/// `inference_cli` is "auto" | "claude" | "codex" | "custom"; when it is
+/// `inference_cli` is "auto" | "claude" | "codex" | "pi" | "custom"; when it is
 /// "custom", `custom_cli_path` holds the executable passed through to the
 /// engine as `--inference` (the engine runs it claude-style, `-p`).
 /// `onboarded` is the first-run flag: the welcome sheet shows until the
@@ -106,9 +108,9 @@ fn get_settings(app: tauri::AppHandle) -> Settings {
 fn set_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), String> {
     if !matches!(
         settings.inference_cli.as_str(),
-        "auto" | "claude" | "codex" | "custom"
+        "auto" | "claude" | "codex" | "pi" | "custom"
     ) {
-        return Err("inference_cli must be auto, claude, codex or custom".into());
+        return Err("inference_cli must be auto, claude, codex, pi or custom".into());
     }
     if settings.inference_cli == "custom" && settings.custom_cli_path.trim().is_empty() {
         return Err("a custom CLI needs a path".into());
@@ -121,24 +123,43 @@ fn set_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), String>
 
 // --- CLI detection ----------------------------------------------------------
 
-/// GUI-launched apps inherit a minimal PATH and never see `~/.local/bin`,
-/// homebrew, or npm-global installs — which breaks the engine's inference
-/// CLI detection (docs/desktop-app-spec.md §Inference). The app owns the
-/// environment it spawns the sidecar with: the spec's common install
-/// locations go in front, the inherited PATH behind. Npm-global discovery
-/// beyond these lands with future Settings work.
-/// The common install locations a GUI launch misses (the spec's PATH
-/// augmentation, hardened for a clean machine with no shell PATH): the
-/// user's own bin dirs plus the node/npm version managers the CLIs are
-/// typically installed through. Only directories that exist are
-/// prepended, so a clean machine gets a short, honest PATH.
-fn augmented_path(home: &std::path::Path) -> OsString {
-    let mut dirs: Vec<PathBuf> = vec![
+/// The inference CLIs the engine knows, in the order "auto" tries them
+/// (inferenceCLIs in inference.go).
+const INFERENCE_CLIS: [&str; 3] = ["claude", "codex", "pi"];
+
+/// GUI-launched apps inherit a minimal PATH (docs/desktop-app-spec.md
+/// §Inference), so the app owns the PATH it spawns the sidecar with. Three
+/// layers, deduplicated, first occurrence wins:
+///
+/// 1. the user's login-shell PATH, resolved once per launch — the PATH
+///    their terminal has, in their order, so the app finds the same
+///    `claude`, `codex` or `pi` that `which` does, and the `node` an
+///    npm-installed CLI's shebang needs;
+/// 2. the common install locations, in case the shell can't be asked (or
+///    sets PATH only for interactive use somewhere it can't see): the
+///    user's own bin dirs, Homebrew, and the node/npm/toolchain managers
+///    these CLIs are typically installed through. Only directories that
+///    exist are added, so a clean machine gets a short, honest PATH;
+/// 3. the inherited PATH.
+fn augmented_path(home: &std::path::Path, login: Option<&std::ffi::OsStr>) -> OsString {
+    let mut dirs: Vec<PathBuf> = login
+        .map(|p| std::env::split_paths(p).collect())
+        .unwrap_or_default();
+    let mut known: Vec<PathBuf> = vec![
         home.join(".local/bin"),
+        home.join("bin"),
         PathBuf::from("/opt/homebrew/bin"),
         PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/home/linuxbrew/.linuxbrew/bin"),
         home.join(".npm-global/bin"),
         home.join(".volta/bin"),
+        home.join(".bun/bin"),
+        home.join(".cargo/bin"),
+        home.join(".pi/agent/bin"),
+        home.join(".asdf/shims"),
+        home.join(".local/share/mise/shims"),
+        home.join(".local/share/fnm/aliases/default/bin"),
+        home.join("Library/Application Support/fnm/aliases/default/bin"),
         home.join("Library/pnpm"),
         home.join(".local/share/pnpm"),
     ];
@@ -160,21 +181,116 @@ fn augmented_path(home: &std::path::Path) -> OsString {
             .collect();
         bins.sort();
         if let Some((_, newest)) = bins.pop() {
-            dirs.push(newest);
+            known.push(newest);
         }
     }
-    dirs.retain(|d| d.is_dir());
+    known.retain(|d| d.is_dir());
+    dirs.extend(known);
     // The inherited PATH joins as elements, not as one string: join_paths
     // rejects an element containing the separator itself, so folding the
     // whole PATH in as one entry silently discarded the augmented dirs
-    // (and every launch behaved as a bare shell launch). Empty elements
-    // — a stray ':' — are dropped so join_paths always succeeds.
+    // (and every launch behaved as a bare shell launch).
     if let Some(path) = std::env::var_os("PATH") {
-        dirs.extend(
-            std::env::split_paths(&path).filter(|d| !d.as_os_str().is_empty()),
-        );
+        dirs.extend(std::env::split_paths(&path));
     }
+    // Empty elements — a stray ':' — are dropped so join_paths succeeds.
+    let mut seen = std::collections::HashSet::new();
+    dirs.retain(|d| !d.as_os_str().is_empty() && seen.insert(d.clone()));
     std::env::join_paths(dirs).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
+}
+
+/// Runs `cmd` with no stdin and returns its stdout if it exits 0 within
+/// `timeout`. The command gets its own process group, and a timeout kills
+/// the whole group, so a hung shell rc file or CLI can't outlive the probe.
+fn capture(mut cmd: std::process::Command, timeout: Duration) -> Option<String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let mut child = cmd.spawn().ok()?;
+    let mut stdout = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        let _ = tx.send(buf);
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(buf) => {
+            let status = child.wait().ok()?;
+            status
+                .success()
+                .then(|| String::from_utf8_lossy(&buf).into_owned())
+        }
+        Err(_) => {
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(-(child.id() as i32), libc::SIGKILL);
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            None
+        }
+    }
+}
+
+const ENV_MARK: &str = "__RECAP_LOGIN_ENV__";
+
+/// Asks `shell` for the PATH a login, interactive session gets: the env
+/// printed between two markers, so whatever the rc files echo on startup
+/// is ignored. `env` instead of `echo $PATH` keeps it shell-agnostic (fish
+/// prints a list PATH as space-separated words). None on any failure.
+fn read_login_shell_path(shell: &std::path::Path, timeout: Duration) -> Option<OsString> {
+    let mut cmd = std::process::Command::new(shell);
+    cmd.args([
+        "-l",
+        "-i",
+        "-c",
+        &format!("echo {ENV_MARK}; /usr/bin/env; echo {ENV_MARK}"),
+    ]);
+    let out = capture(cmd, timeout)?;
+    out.split(ENV_MARK)
+        .nth(1)?
+        .lines()
+        .find_map(|line| line.strip_prefix("PATH="))
+        .filter(|path| !path.is_empty())
+        .map(OsString::from)
+}
+
+/// The login-shell PATH, resolved once per launch: $SHELL (zsh on a
+/// macOS without one), five seconds at most, None when it can't be had.
+fn login_shell_path() -> Option<OsString> {
+    static CACHE: std::sync::OnceLock<Option<OsString>> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            if cfg!(not(unix)) {
+                return None;
+            }
+            let shell = std::env::var_os("SHELL")
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("/bin/zsh"));
+            read_login_shell_path(&shell, Duration::from_secs(5))
+        })
+        .clone()
+}
+
+/// The PATH every sidecar spawn and CLI probe uses. Resolving the login
+/// shell can block for its timeout on first use, so it runs off the async
+/// runtime.
+async fn app_path(app: &tauri::AppHandle) -> Result<OsString, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("could not resolve the home directory: {e}"))?;
+    let login = tauri::async_runtime::spawn_blocking(login_shell_path)
+        .await
+        .unwrap_or(None);
+    Ok(augmented_path(&home, login.as_deref()))
 }
 
 fn is_executable(path: &std::path::Path) -> bool {
@@ -204,8 +320,46 @@ fn find_cli(name: &str, path: &OsString) -> Option<String> {
         .and_then(|p| p.to_str().map(String::from))
 }
 
-/// Preflight detection for Settings: which CLI the engine would find with
-/// the app's augmented PATH, and where.
+/// One supported inference CLI as this machine has it.
+#[derive(Serialize)]
+struct CliStatus {
+    name: String,
+    /// Where the app's PATH resolves it; null when it isn't installed.
+    path: Option<String>,
+    /// First line of `<cli> --version`, run with the app's PATH; null when
+    /// missing or when the probe failed (see `runs`).
+    version: Option<String>,
+    /// Whether `--version` ran and exited 0. A CLI that is found but
+    /// doesn't run usually needs a runtime (node) the app's PATH lacks.
+    runs: bool,
+}
+
+fn probe_cli(name: &str, path: &OsString) -> CliStatus {
+    let Some(found) = find_cli(name, path) else {
+        return CliStatus { name: name.into(), path: None, version: None, runs: false };
+    };
+    let mut cmd = std::process::Command::new(&found);
+    cmd.arg("--version").env("PATH", path);
+    let version = capture(cmd, Duration::from_secs(10)).map(|out| {
+        out.lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .unwrap_or("")
+            .chars()
+            .take(80)
+            .collect::<String>()
+    });
+    CliStatus {
+        name: name.into(),
+        runs: version.is_some(),
+        version: version.filter(|v| !v.is_empty()),
+        path: Some(found),
+    }
+}
+
+/// Preflight detection for Settings and first run: every supported CLI
+/// with its resolved path and version, and which one the current settings
+/// hand the brief to.
 #[derive(Serialize)]
 struct Detection {
     /// The CLI the current settings resolve to, or null if none found.
@@ -214,46 +368,49 @@ struct Detection {
     path: Option<String>,
     /// The names checked, in order — what "auto" would fall through to.
     considered: Vec<String>,
+    /// Every supported CLI, installed or not, in "auto" order.
+    clis: Vec<CliStatus>,
+    /// Whether the login shell's PATH was resolved and is in front.
+    login_shell: bool,
     /// The augmented PATH the sidecar is spawned with, for display.
     path_dirs: Vec<String>,
 }
 
 #[tauri::command]
-fn detect_inference(app: tauri::AppHandle) -> Detection {
+async fn detect_inference(app: tauri::AppHandle) -> Result<Detection, String> {
     let settings = Settings::load(&app);
-    let home = app
-        .path()
-        .home_dir()
-        .map_err(|e| e.to_string())
-        .unwrap_or_default();
-    let path = augmented_path(&home);
-    let path_dirs = std::env::split_paths(&path)
-        .filter_map(|d| d.to_str().map(String::from))
-        .collect();
-
-    let mut considered = vec![];
-    let candidates: Vec<String> = match settings.inference_cli.as_str() {
-        "auto" => vec!["claude".into(), "codex".into()],
-        "custom" => vec![settings.cli_value()],
-        other => vec![other.to_string()],
-    };
-    for name in &candidates {
-        considered.push(name.clone());
-        if let Some(found) = find_cli(name, &path) {
-            return Detection {
-                cli: Some(name.clone()),
-                path: Some(found),
-                considered,
-                path_dirs,
-            };
+    let path = app_path(&app).await?;
+    let login_shell = login_shell_path().is_some();
+    tauri::async_runtime::spawn_blocking(move || {
+        let clis: Vec<CliStatus> = std::thread::scope(|scope| {
+            let probes: Vec<_> = INFERENCE_CLIS
+                .iter()
+                .map(|name| scope.spawn(|| probe_cli(name, &path)))
+                .collect();
+            probes.into_iter().map(|p| p.join().unwrap()).collect()
+        });
+        let considered: Vec<String> = match settings.inference_cli.as_str() {
+            "auto" => INFERENCE_CLIS.iter().map(|s| s.to_string()).collect(),
+            "custom" => vec![settings.cli_value()],
+            other => vec![other.to_string()],
+        };
+        let (cli, found) = considered
+            .iter()
+            .find_map(|name| find_cli(name, &path).map(|p| (Some(name.clone()), Some(p))))
+            .unwrap_or((None, None));
+        Detection {
+            cli,
+            path: found,
+            considered,
+            clis,
+            login_shell,
+            path_dirs: std::env::split_paths(&path)
+                .filter_map(|d| d.to_str().map(String::from))
+                .collect(),
         }
-    }
-    Detection {
-        cli: None,
-        path: None,
-        considered,
-        path_dirs,
-    }
+    })
+    .await
+    .map_err(|e| format!("detection failed: {e}"))
 }
 
 // --- generation -------------------------------------------------------------
@@ -313,10 +470,7 @@ async fn generate_brief(
         return Err("a generation is already running".into());
     }
     let settings = Settings::load(&app);
-    let home = app
-        .path()
-        .home_dir()
-        .map_err(|e| format!("could not resolve the home directory: {e}"))?;
+    let path = app_path(&app).await?;
 
     let cli = settings.cli_value();
     let timeout = settings.timeout_sec.to_string();
@@ -325,7 +479,7 @@ async fn generate_brief(
         .sidecar("recap")
         .map_err(|e| format!("sidecar binary not found: {e}"))?
         .args(["--days", "1", "--inference", &cli, "--timeout", &timeout])
-        .env("PATH", augmented_path(&home))
+        .env("PATH", path)
         .spawn()
         .map_err(|e| format!("failed to spawn the sidecar: {e}"))?;
 
@@ -449,16 +603,25 @@ async fn read_archives(app: tauri::AppHandle) -> Result<Vec<ArchiveFile>, String
 /// is just "recap" — not the "binaries/recap" path from tauri.conf.json.
 #[tauri::command]
 async fn run_scan(app: tauri::AppHandle) -> Result<String, String> {
-    let home = app
-        .path()
-        .home_dir()
-        .map_err(|e| format!("could not resolve the home directory: {e}"))?;
+    sidecar_stdout(&app, &SCAN_ARGS).await
+}
+
+/// The transcript half of detection: `recap --sources --days 1` reports
+/// each tool's session directory and how many sessions it holds (and how
+/// many fall in the scan window), as JSON the frontend validates.
+#[tauri::command]
+async fn detect_sources(app: tauri::AppHandle) -> Result<String, String> {
+    sidecar_stdout(&app, &["--sources", "--days", "1"]).await
+}
+
+async fn sidecar_stdout(app: &tauri::AppHandle, args: &[&str]) -> Result<String, String> {
+    let path = app_path(app).await?;
     let output = app
         .shell()
         .sidecar("recap")
         .map_err(|e| format!("sidecar binary not found: {e}"))?
-        .args(SCAN_ARGS)
-        .env("PATH", augmented_path(&home))
+        .args(args)
+        .env("PATH", path)
         .output()
         .await
         .map_err(|e| format!("failed to run sidecar: {e}"))?;
@@ -482,6 +645,7 @@ fn main() {
             get_settings,
             set_settings,
             detect_inference,
+            detect_sources,
             generate_brief,
             cancel_generation,
             read_archives
@@ -518,7 +682,7 @@ mod tests {
         std::fs::write(&cli, "#!/bin/sh\n").unwrap();
         make_executable_helper(&cli);
 
-        let path = augmented_path(&home);
+        let path = augmented_path(&home, None);
         let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
         assert_eq!(dirs.first(), Some(&user_bin));
         // /opt/homebrew/bin and friends do not exist in this sandbox, and
@@ -541,7 +705,7 @@ mod tests {
             std::fs::create_dir_all(home.join(format!(".nvm/versions/node/{v}/bin"))).unwrap();
         }
 
-        let path = augmented_path(&home);
+        let path = augmented_path(&home, None);
         let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
         assert!(
             dirs.contains(&home.join(".nvm/versions/node/v10.0.0/bin")),
@@ -553,6 +717,100 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// The login shell's PATH goes first, in the user's order, and a dir it
+    /// shares with the known locations or the inherited PATH appears once.
+    #[test]
+    fn augmented_path_puts_the_login_shell_path_first() {
+        let home = std::env::temp_dir().join("recap-augmented-login-test");
+        let _ = std::fs::remove_dir_all(&home);
+        let user_bin = home.join(".local/bin");
+        std::fs::create_dir_all(&user_bin).unwrap();
+        let login = std::env::join_paths([PathBuf::from("/opt/brew-first"), user_bin.clone()]).unwrap();
+
+        let dirs: Vec<PathBuf> = std::env::split_paths(&augmented_path(&home, Some(&login))).collect();
+        assert_eq!(dirs[0], PathBuf::from("/opt/brew-first"));
+        assert_eq!(dirs[1], user_bin);
+        assert_eq!(dirs.iter().filter(|d| **d == user_bin).count(), 1, "{dirs:?}");
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    fn fake_shell(name: &str, body: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("recap-fake-shell-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let shell = dir.join("sh");
+        std::fs::write(&shell, format!("#!/bin/sh\n{body}")).unwrap();
+        make_executable_helper(&shell);
+        shell
+    }
+
+    /// The login shell is asked with -l -i -c, and only the PATH printed
+    /// between the markers counts: rc-file chatter before it (including a
+    /// line that looks like PATH=) is ignored.
+    #[test]
+    fn login_shell_path_reads_path_between_markers() {
+        let shell = fake_shell(
+            "ok",
+            "echo 'Welcome back!'\necho PATH=/not/this\n\
+             [ \"$1 $2 $3\" = '-l -i -c' ] || exit 3\n\
+             echo __RECAP_LOGIN_ENV__\necho HOME=/h\necho PATH=/login/bin:/opt/homebrew/bin\necho __RECAP_LOGIN_ENV__\n",
+        );
+        assert_eq!(
+            read_login_shell_path(&shell, Duration::from_secs(5)),
+            Some(OsString::from("/login/bin:/opt/homebrew/bin"))
+        );
+    }
+
+    /// A shell whose rc files hang, or that fails, yields None — the known
+    /// locations still apply — and never blocks past the timeout.
+    #[test]
+    fn login_shell_path_times_out_and_fails_soft() {
+        let slow = fake_shell("slow", "sleep 30\n");
+        let started = std::time::Instant::now();
+        assert_eq!(read_login_shell_path(&slow, Duration::from_millis(300)), None);
+        assert!(started.elapsed() < Duration::from_secs(5));
+
+        let failing = fake_shell("fail", "exit 1\n");
+        assert_eq!(read_login_shell_path(&failing, Duration::from_secs(5)), None);
+        assert_eq!(
+            read_login_shell_path(std::path::Path::new("/nonexistent/shell"), Duration::from_secs(1)),
+            None
+        );
+    }
+
+    /// Every supported CLI is reported, not just the first auto finds:
+    /// installed ones with path and version, one that is on PATH but can't
+    /// run flagged as such, missing ones with no path.
+    #[test]
+    fn probe_cli_reports_path_version_and_runnability() {
+        let dir = std::env::temp_dir().join("recap-probe-cli-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, body) in [
+            ("codex", "#!/bin/sh\necho\necho 'codex-cli 0.98.0'\n"),
+            ("pi", "#!/bin/sh\nexit 127\n"),
+        ] {
+            let p = dir.join(name);
+            std::fs::write(&p, body).unwrap();
+            make_executable_helper(&p);
+        }
+        let path = std::env::join_paths([&dir]).unwrap();
+
+        let codex = probe_cli("codex", &path);
+        assert_eq!(codex.path.as_deref(), dir.join("codex").to_str());
+        assert_eq!(codex.version.as_deref(), Some("codex-cli 0.98.0"));
+        assert!(codex.runs);
+
+        let pi = probe_cli("pi", &path);
+        assert!(pi.path.is_some() && !pi.runs && pi.version.is_none());
+
+        let claude = probe_cli("claude", &path);
+        assert!(claude.path.is_none() && !claude.runs);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn make_executable_helper(path: &std::path::Path) {
