@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import briefSource from "../fixtures/daily-brief.md?raw";
 import { candidates } from "./fixtures";
-import { count, leadOf, parseEntries, readMinutes } from "./brief";
+import { count, leadOf, localDate, parseArchiveMeta, parseEntries, readMinutes } from "./brief";
 
 describe("parseEntries", () => {
   const entries = parseEntries(briefSource);
@@ -38,8 +38,21 @@ describe("parseEntries", () => {
   it("tolerates an entry without a sources line", () => {
     const raw = "# Recap 2026-11-03 07:04\n\n_window: x_\n\n**Plain entry.** One sentence. Two sentences.";
     expect(parseEntries(raw)).toEqual([
-      { title: "Plain entry", lede: "One sentence.", rest: "Two sentences.", rule: "", sources: [] },
+      {
+        title: "Plain entry",
+        lede: "One sentence.",
+        rest: "Two sentences.",
+        rule: "",
+        sources: [],
+        body: "One sentence. Two sentences.",
+      },
     ]);
+  });
+
+  it("keeps the archive's full explainer paragraph as the body", () => {
+    const withRule = entries.find((e) => e.rule);
+    expect(withRule?.body).toContain("Rule of thumb:");
+    expect(withRule?.body.startsWith(withRule?.lede ?? "")).toBe(true);
   });
 
   it("estimates a bounded reading time", () => {
@@ -87,5 +100,42 @@ describe("leadOf", () => {
   it("otherwise leads with the first question", () => {
     const c = candidates.find((x) => x.id === "af22bca7674a177b")!;
     expect(leadOf(c)).toEqual({ kind: "question", text: "why does it need the APN at all?" });
+  });
+});
+
+describe("parseArchiveMeta", () => {
+  const raw = [
+    "# Recap 2026-10-12 07:04",
+    "",
+    "_window: since 2026-10-11 | tools: claude+codex | sessions: 5 | pairs: 9 | candidates: 11 | inference: claude_",
+    "",
+    "**A concept.** Body.",
+  ].join("\n");
+
+  it("reads the header the engine writes", () => {
+    expect(parseArchiveMeta(raw)).toEqual({
+      generatedAt: "2026-10-12 07:04",
+      since: "2026-10-11",
+      tools: "claude+codex",
+      sessions: 5,
+      pairs: 9,
+      candidates: 11,
+      inference: "claude",
+    });
+  });
+
+  it("parses the same file into entries and meta together", () => {
+    expect(parseEntries(raw).map((e) => e.title)).toEqual(["A concept"]);
+    expect(parseArchiveMeta(raw)?.since).toBe("2026-10-11");
+  });
+
+  it("returns null for a file with no archive header", () => {
+    expect(parseArchiveMeta("**Just a brief.** No header.")).toBeNull();
+  });
+});
+
+describe("localDate", () => {
+  it("formats the way the engine dates archive files", () => {
+    expect(localDate(new Date(2026, 10, 4, 23, 30))).toBe("2026-11-04");
   });
 });

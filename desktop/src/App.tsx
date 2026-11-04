@@ -68,7 +68,7 @@ export default function App() {
       </aside>
       <main className="content">
         {screen === "brief" && <DailyBrief store={store} onNavigate={go} />}
-        {screen === "library" && <ConceptLibrary onNavigate={go} />}
+        {screen === "library" && <ConceptLibrary store={store} onNavigate={go} />}
         {screen === "signals" && <SignalExplorer store={store} focus={focus} onNavigate={go} />}
         {screen === "review" && <Review />}
         {screen === "settings" && <SettingsScreen />}

@@ -1,9 +1,10 @@
 import { useState } from "react";
+import Exchange from "../Exchange";
+import { Html } from "../md";
 import { type Candidate } from "../fixtures";
 import {
   clock,
   count,
-  inline,
   leadOf,
   project,
   readMinutes,
@@ -19,28 +20,6 @@ import type { Navigate } from "../App";
 type Level = 0 | 1 | 2;
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-function Html({ as: Tag = "span", md, className }: { as?: "span" | "p" | "h2" | "pre"; md: string; className?: string }) {
-  return <Tag className={className} dangerouslySetInnerHTML={{ __html: inline(md) }} />;
-}
-
-function Exchange({ c }: { c: Candidate }) {
-  return (
-    <div className="exchange-sheet">
-      <div className="turn">
-        <div className="turn-who">
-          You
-          <span>{clock(c.ts)}</span>
-        </div>
-        <pre>{c.userMessage}</pre>
-      </div>
-      <div className="turn">
-        <div className="turn-who">{c.tool}</div>
-        <pre>{c.assistantExcerpt}</pre>
-      </div>
-    </div>
-  );
-}
 
 function Entry({
   entry,
