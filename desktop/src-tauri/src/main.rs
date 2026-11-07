@@ -635,11 +635,70 @@ async fn sidecar_stdout(app: &tauri::AppHandle, args: &[&str]) -> Result<String,
     String::from_utf8(output.stdout).map_err(|e| format!("sidecar output was not UTF-8: {e}"))
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct VibrancyState(Mutex<bool>);
+
+#[tauri::command]
+async fn sidebar_vibrancy(window: tauri::WebviewWindow) -> Option<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::NSWorkspace;
+        use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+
+        if !window.app_handle().config().app.windows.iter().any(|config| {
+            config.label == window.label() && config.transparent
+        }) {
+            return None;
+        }
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let native_window = window.clone();
+        if window
+            .run_on_main_thread(move || {
+                let enabled = (|| {
+                    if NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency() {
+                        return false;
+                    }
+                    let state = native_window.state::<VibrancyState>();
+                    let Ok(mut applied) = state.0.lock() else { return false };
+                    if !*applied {
+                        if apply_vibrancy(
+                            &native_window,
+                            NSVisualEffectMaterial::Sidebar,
+                            Some(NSVisualEffectState::FollowsWindowActiveState),
+                            None,
+                        ).is_err() {
+                            return false;
+                        }
+                        *applied = true;
+                    }
+                    true
+                })();
+                let _ = tx.send(enabled);
+            })
+            .is_err()
+        {
+            return Some(false);
+        }
+        Some(tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(2)).unwrap_or(false))
+            .await
+            .unwrap_or(false))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window;
+        None
+    }
+}
+
 fn main() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
-        .manage(GenState::default())
+        .manage(GenState::default());
+    #[cfg(target_os = "macos")]
+    let builder = builder.manage(VibrancyState::default());
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             run_scan,
             get_settings,
@@ -648,7 +707,8 @@ fn main() {
             detect_sources,
             generate_brief,
             cancel_generation,
-            read_archives
+            read_archives,
+            sidebar_vibrancy
         ])
         .build(tauri::generate_context!())
         .expect("error while building the recap app");

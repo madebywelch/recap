@@ -122,6 +122,10 @@ Tauri reads Apple credentials from the environment, and the release workflow pas
 
 Signing needs the first three; notarization additionally needs the last three. Add them as repository secrets and the next release run signs and notarizes with no workflow change. Unsigned-by-default is deliberate: whether recap stays a personal tool or becomes a public product is undecided, and an unsigned build answers both.
 
+## macOS sidebar material
+
+macOS builds opt into native sidebar vibrancy by default through `src-tauri/tauri.macos.conf.json`. To build an opaque variant, run `pnpm tauri build --config src-tauri/tauri.opaque.conf.json` from `desktop/`; the same override can be used with `pnpm tauri dev`. This disables both window transparency and the material. Transparent WKWebView may use private macOS APIs, so the default is not a claim of Mac App Store compatibility. The opaque fallback for Reduce Transparency and native effect failures needs verification on macOS.
+
 ## What remains for later milestones
 
 - The release workflow ships macOS only; packaging for other platforms waits on the same decision as signing.
