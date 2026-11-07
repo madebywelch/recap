@@ -4,7 +4,7 @@ import Exchange from "../Exchange";
 import { Html } from "../md";
 import { brief } from "../fixtures";
 import { localDate, parseEntries, signed } from "../brief";
-import { dueText } from "../library-filters";
+import { dueText, firstSentence } from "../library-filters";
 import { useLibrary } from "../useLibrary";
 import type { Concept, StoreState } from "../store";
 import type { Candidate } from "../fixtures";
@@ -156,7 +156,7 @@ function Reader({
 
 /** The browser build has no store; the shelf shows the fixture brief as a
  *  designed preview, honestly labeled. */
-function FixtureShelf() {
+function FixtureShelf({ store }: { store: StoreState }) {
   const entries = parseEntries(briefSource);
   const date = new Date(brief.meta.generatedAt.replace(" ", "T"));
   return (
@@ -179,7 +179,12 @@ function FixtureShelf() {
                 <Html md={e.title} />
               </span>
               <span className="shelf-lede">
-                <Html md={e.body} />
+                <Html md={firstSentence(e.body.trim().replace(/\s+/g, " "))} />
+              </span>
+              <span className="shelf-meta">
+                <span>{date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</span>
+                {store.candidates.some((candidate) => e.sources.includes(candidate.id)) && <span>Conversation source</span>}
+                {[...new Set(store.candidates.filter((candidate) => e.sources.includes(candidate.id)).map((candidate) => candidate.tool))].map((tool) => <span key={tool}>{tool}</span>)}
               </span>
             </div>
           ))}
@@ -193,7 +198,7 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
   const { concepts, query, setQuery, groups, selected, sources, loading, loadError, sourceError, reviewError, reviewPending, retry, retrySources, open, close, addReview, removeReview, inWindow } =
     useLibrary(store);
 
-  if (store?.source === "fixture") return <FixtureShelf />;
+  if (store?.source === "fixture") return <FixtureShelf store={store} />;
 
   if (selected) {
     return (
@@ -284,7 +289,12 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
                   <Html md={c.title} />
                 </span>
                 <span className="shelf-lede">
-                  <Html md={c.body} />
+                  <Html md={firstSentence(c.body.trim().replace(/\s+/g, " "))} />
+                </span>
+                <span className="shelf-meta">
+                  <span>{dayLabel(c.date)}</span>
+                  {store.candidates.some((candidate) => c.sourceIds?.includes(candidate.id)) && <span>Conversation source</span>}
+                  {[...new Set(store.candidates.filter((candidate) => c.sourceIds?.includes(candidate.id)).map((candidate) => candidate.tool))].map((tool) => <span key={tool}>{tool}</span>)}
                 </span>
                 {c.review && (
                   <span className="tag">{dueText(c.review.dueOn, localDate(new Date()))}</span>

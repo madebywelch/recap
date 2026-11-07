@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import briefSource from "../../fixtures/daily-brief.md?raw";
 import { useExplorer } from "../useExplorer";
 import { loadBriefRun, type StoreState } from "../store";
@@ -247,7 +247,6 @@ export default function SignalExplorer({
   onNavigate: Navigate;
 }) {
   const { filters, setFilters, visible, selected, select } = useExplorer(store);
-  const rowsRef = useRef<HTMLDivElement>(null);
 
   // "In brief" tags follow the brief the reader actually sees: the latest
   // live run's sources, or the fixture brief when running on fixtures.
@@ -292,43 +291,40 @@ export default function SignalExplorer({
     select(target.id);
   }, [focus, store, setFilters, select]);
 
-  useEffect(() => {
-    rowsRef.current?.querySelector(".xrowc.sel")?.scrollIntoView({ block: "nearest" });
-  }, [selected?.id]);
-
   if (!store) {
     return (
       <div className="split signal-explorer">
-        <div className="xlist">
-          <header className="lhead">
-            <div className="kicker">Signal Explorer</div>
-            <h1>Why the engine chose</h1>
-            <p>Scanning this machine's sessions…</p>
-          </header>
-        </div>
-        <div className="xdetail" />
+        <header className="lhead">
+          <div className="kicker">Signal Explorer</div>
+          <h1>Why the engine chose</h1>
+          <p>Scanning this machine's sessions…</p>
+        </header>
       </div>
     );
   }
 
   return (
     <div className="split signal-explorer">
-      <div className="xlist">
-        <header className="lhead">
-          <div className="kicker">Signal Explorer</div>
-          <h1>Why the engine chose</h1>
-          <p>
-            {store.source === "live" ? "Live scan" : "Engine fixture"} · {count(store.candidates.length, "candidate")} since{" "}
-            {new Date(store.since + "T00:00").toLocaleDateString([], { month: "short", day: "numeric" })} · sorted by score
-          </p>
-          {store.source === "fixture" && !store.error && (
-            <p className="xnote">The browser build can't run the engine sidecar. The app shell scans live.</p>
-          )}
-          {store.error && <p className="xnote error">Live scan failed, so this is the fixture: {store.error}</p>}
-          {briefError && <p className="xnote error" role="alert">Couldn't load brief links: {briefError}</p>}
-        </header>
+      <header className="lhead">
+        <div className="kicker">Signal Explorer</div>
+        <h1>Why the engine chose</h1>
+        <p>
+          {store.source === "live" ? "Live scan" : "Engine fixture"} · {count(store.candidates.length, "candidate")} since{" "}
+          {new Date(store.since + "T00:00").toLocaleDateString([], { month: "short", day: "numeric" })} · sorted by score
+        </p>
+        {store.source === "fixture" && !store.error && (
+          <p className="xnote">The browser build can't run the engine sidecar. The app shell scans live.</p>
+        )}
+        {store.error && <p className="xnote error">Live scan failed, so this is the fixture: {store.error}</p>}
+        {briefError && <p className="xnote error" role="alert">Couldn't load brief links: {briefError}</p>}
+      </header>
+      <details className="signal-filters">
+        <summary>Filters <span>{count(visible.length, "candidate")} shown</span></summary>
         <Filters candidates={store.candidates} filters={filters} onChange={setFilters} />
-        <div className="xrows" ref={rowsRef}>
+      </details>
+      <div className="xlist">
+        <h2 className="signal-list-heading">Candidates <span>{visible.length}</span></h2>
+        <div className="xrows">
           {visible.map((c) => (
             <button
               key={c.id}

@@ -48,3 +48,34 @@ it("renders load retry, source retry and exchange disclosure", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Add to review" }));
   expect((await screen.findByRole("alert")).textContent).toContain("Couldn't add this concept to review.");
 });
+
+it("shows the first sentence and known source metadata on the shelf, then the full body in the reader", async () => {
+  const body = "The first sentence is complete. The second sentence belongs in the reader.\nThe final detail remains visible.";
+  vi.mocked(loadConcepts).mockResolvedValue([{ ...row, body }]);
+  vi.mocked(loadCandidatesByIds).mockResolvedValue([source]);
+  render(<ConceptLibrary store={{ ...store, candidates: [source] }} onNavigate={vi.fn()} />);
+
+  const card = await screen.findByRole("button", { name: /A concept/ });
+  expect(card.textContent).toContain("The first sentence is complete.");
+  expect(card.textContent).not.toContain("The second sentence");
+  expect(card.textContent).toContain("Conversation source");
+  expect(card.textContent).toContain("claude");
+  fireEvent.click(card);
+  expect(screen.getByText(/The second sentence belongs in the reader/).textContent).toContain("The final detail remains visible.");
+});
+
+it("omits source metadata when the referenced candidate is unavailable", async () => {
+  vi.mocked(loadConcepts).mockResolvedValue([row]);
+  render(<ConceptLibrary store={store} onNavigate={vi.fn()} />);
+  const card = await screen.findByRole("button", { name: /A concept/ });
+  expect(card.textContent).not.toContain("Conversation source");
+  expect(card.textContent).not.toContain("claude");
+});
+
+it("shows matched fixture source metadata without exposing the full explainer", () => {
+  render(<ConceptLibrary store={{ ...store, source: "fixture", candidates: [{ ...source, id: "20a4768e4f88e03b" }] }} onNavigate={vi.fn()} />);
+  const card = screen.getByText("SQLite locking modes and WAL").closest(".shelf-row")!;
+  expect(card.textContent).toContain("Conversation source");
+  expect(card.textContent).toContain("claude");
+  expect(card.textContent).not.toContain("rollback-journal");
+});

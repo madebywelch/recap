@@ -21,7 +21,7 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
     return (
       <div className="folio-scroll">
         <div className="sheet review-sheet studio-review-state">
-          <div className="kicker">Review</div>
+          <div className="kicker">Make it stick · Review</div>
           <p className="dek">Review needs the app's store — outside the shell there is nothing to grade.</p>
         </div>
       </div>
@@ -32,7 +32,7 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
     return (
       <div className="folio-scroll">
         <div className="sheet review-sheet studio-review-state">
-          <div className="kicker">Review</div>
+          <div className="kicker">Make it stick · Review</div>
           <p className="dek" role="alert">Couldn't load your review list.</p>
           <button className="button" onClick={() => void refresh()}>Try again</button>
         </div>
@@ -55,7 +55,7 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
     return (
       <div className="folio-scroll">
         <div className="sheet review-sheet studio-review-state">
-          <div className="kicker">Review · done</div>
+          <div className="kicker">Make it stick · Review complete</div>
           <h1 className="display">That's everything due.</h1>
           {loadError && <p role="alert">Couldn't refresh your next check-in and weekly progress.</p>}
           <p className="dek">
@@ -96,7 +96,7 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
     return (
       <div className="folio-scroll">
         <div className="sheet review-sheet studio-review-state">
-          <div className="kicker">Review</div>
+          <div className="kicker">Make it stick · Review</div>
           <h1 className="display">{noneAtAll ? "Nothing is in review yet." : "Nothing due today."}</h1>
           <p className="dek">
             {noneAtAll
@@ -152,9 +152,12 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
           </p>
         ) : revealed ? (
           <>
-            <p className="entry-what reader-body">
-              <Html md={current.body} />
-            </p>
+            <div className="studio-review-answer">
+              <div className="kicker">The explainer</div>
+              <p className="entry-what reader-body">
+                <Html md={current.body} />
+              </p>
+            </div>
             {current.sourceIds === null ? (
               <p className="quiet-note">This concept came from a pre-app archive — the exchange behind it wasn't recorded.</p>
             ) : (
@@ -182,7 +185,8 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
                 ))}
               </section>
             )}
-            <div className="grade-row">
+            <p className="studio-review-grade-prompt">How well did you remember?</p>
+            <div className="grade-row" aria-label="Grade your recall">
               <button className="button primary" onClick={() => grade("got-it")}>
                 Got it <span className="kbd">1</span>
               </button>
@@ -196,7 +200,8 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
             {gradeError && <p role="alert">Couldn't save your grade. Please try again.</p>}
           </>
         ) : (
-          <div className="closing">
+          <div className="closing studio-review-action">
+            <span>Recall first, then check your thinking.</span>
             <button className="button primary" onClick={reveal}>
               Show answer <span className="kbd">Space</span>
             </button>

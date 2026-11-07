@@ -28,9 +28,9 @@
   }
 }
 
-.signal-explorer .xlist { grid-column: 2; grid-row: 1; min-width: 0; }
-.signal-explorer .xdetail { grid-column: 1; grid-row: 1; overflow: visible; padding: 0; min-width: 0; }
-.signal-explorer .lhead { padding: 0 0 20px; }
+.signal-explorer .xlist { grid-column: 2; grid-row: 3; min-width: 0; }
+.signal-explorer .xdetail { grid-column: 1; grid-row: 3; overflow: visible; padding: 0; min-width: 0; }
+.signal-explorer .lhead { grid-column: 1 / -1; padding: 0; }
 .signal-explorer .lhead h1 { font: 700 32px/1.15 var(--font-ui); letter-spacing: -1px; }
 .signal-explorer .lhead p { color: var(--signal-muted); line-height: 1.5; }
 .signal-explorer .lhead .xnote { font: 400 12px/1.5 var(--font-ui); }
@@ -44,7 +44,12 @@
   border-radius: 16px;
   padding: 22px;
 }
-.signal-explorer .xfilters { margin-bottom: 15px; }
+.signal-explorer .signal-filters { grid-column: 1 / -1; background: var(--signal-panel); border: 1px solid var(--signal-line); border-radius: 12px; }
+.signal-explorer .signal-filters > summary { cursor: pointer; padding: 14px 20px; font-weight: 700; }
+.signal-explorer .signal-filters > summary span { margin-left: 12px; color: var(--signal-muted); font-size: 12px; font-weight: 400; }
+.signal-explorer .xfilters { border: 0; border-top: 1px solid var(--signal-line); border-radius: 0; padding: 20px; }
+.signal-explorer .signal-list-heading { margin: 0 0 10px; font: 700 14px var(--font-ui); color: var(--signal-muted); }
+.signal-explorer .signal-list-heading span { margin-left: 5px; font-weight: 400; }
 .signal-explorer .xsearch, .signal-explorer .xrow input[type="date"] { background: var(--signal-bg); border-color: var(--signal-line); color: var(--signal-ink); }
 .signal-explorer .xsearch input { color: var(--signal-ink); }
 .signal-explorer .xrow { color: var(--signal-muted); }
@@ -83,7 +88,8 @@
 .signal-explorer .meta dd { color: var(--signal-ink); }
 @media (max-width: 1000px) {
   .split.signal-explorer { grid-template-columns: minmax(0, 1fr); padding: 24px; }
-  .signal-explorer .xlist, .signal-explorer .xdetail { grid-column: 1; grid-row: auto; }
+  .signal-explorer .xlist { grid-column: 1; grid-row: 4; }
+  .signal-explorer .xdetail { grid-column: 1; grid-row: 3; }
 }
 @media (max-width: 600px) {
   .signal-explorer .xsheet { grid-template-columns: minmax(0, 1fr); }

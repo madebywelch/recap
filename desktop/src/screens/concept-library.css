@@ -54,6 +54,15 @@
   font: 400 15px/1.6 var(--font-ui);
 }
 
+.concept-library .shelf-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  color: var(--ink-3);
+  font: 400 12px/1.5 var(--font-ui);
+}
+
 .concept-reader-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);

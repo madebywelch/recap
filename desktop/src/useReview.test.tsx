@@ -36,6 +36,26 @@ afterEach(() => {
 });
 
 describe("useReview", () => {
+  it.each([
+    ["1", "got-it"],
+    ["2", "fuzzy"],
+    ["3", "lost-it"],
+  ] as const)("reveals with Space and grades %s as %s", async (key, grade) => {
+    vi.mocked(applyReview).mockResolvedValue(seedState("2026-12-01"));
+    render(<Review store={store} onNavigate={vi.fn()} />);
+    await screen.findByRole("button", { name: /Show answer/ });
+
+    fireEvent.keyDown(window, { key });
+    expect(applyReview).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    expect(screen.getByText("First answer")).toBeTruthy();
+    fireEvent.keyDown(window, { key });
+    await waitFor(() => expect(applyReview).toHaveBeenCalledWith(1, grade));
+    expect(await screen.findByRole("status")).toBeTruthy();
+    fireEvent.keyDown(window, { key });
+    expect(applyReview).toHaveBeenCalledOnce();
+  });
+
   it("renders load and grade errors with working retry controls", async () => {
     vi.mocked(loadDueConcepts).mockRejectedValueOnce(new Error("offline"));
     vi.mocked(applyReview).mockRejectedValueOnce(new Error("write failed")).mockResolvedValueOnce(seedState("2026-12-01"));
