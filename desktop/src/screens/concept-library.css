@@ -1,0 +1,140 @@
+.concept-library .concept-sheet {
+  max-width: 1400px;
+}
+
+.concept-library .display {
+  overflow-wrap: anywhere;
+}
+
+.concept-library .library-search {
+  max-width: 620px;
+  margin-top: 28px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--sheet);
+}
+
+.concept-library .library-count {
+  margin-top: 14px;
+  font-family: var(--font-ui);
+}
+
+.concept-library .shelf {
+  margin-top: 32px;
+}
+
+.concept-library .shelf-head {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.concept-library .shelf-note {
+  font: 400 13px/1.5 var(--font-ui);
+}
+
+.concept-library .shelf-row {
+  margin-top: 12px;
+  padding: 20px 24px;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: var(--sheet);
+  overflow-wrap: anywhere;
+}
+
+.concept-library .shelf-row.is-link:hover {
+  border-color: var(--accent);
+}
+
+.concept-library .shelf-title {
+  font: 700 18px/1.35 var(--font-ui);
+}
+
+.concept-library .shelf-lede {
+  max-width: none;
+  font: 400 15px/1.6 var(--font-ui);
+}
+
+.concept-reader-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
+  gap: 20px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.concept-reader-card,
+.concept-review-card,
+.concept-source-card {
+  min-width: 0;
+  padding: 28px;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: var(--sheet);
+  overflow-wrap: anywhere;
+}
+
+.concept-reader-card .display {
+  margin: 16px 0 24px;
+}
+
+.concept-reader-card .reader-body {
+  max-width: 75ch;
+  white-space: pre-wrap;
+}
+
+.concept-reader-card {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.concept-review-card,
+.concept-source-card {
+  grid-column: 2;
+}
+
+.concept-source-card:has(.concept-sources) {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.concept-review-card {
+  background: var(--accent-soft);
+}
+
+.concept-review-card .reader-meta {
+  margin-top: 16px;
+}
+
+.concept-review-card .closing {
+  margin-top: 18px;
+}
+
+.concept-source-card .source {
+  margin-top: 20px;
+}
+
+.concept-source-card .turn pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1000px) {
+  .concept-reader-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .concept-reader-card,
+  .concept-review-card,
+  .concept-source-card,
+  .concept-source-card:has(.concept-sources) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 600px) {
+  .concept-reader-card,
+  .concept-review-card,
+  .concept-source-card {
+    padding: 20px;
+  }
+}

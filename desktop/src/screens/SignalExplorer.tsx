@@ -14,6 +14,7 @@ import {
 } from "../explorer-filters";
 import { TOOLS, TOOL_LABELS, type Candidate, type Signal } from "../fixtures";
 import { count, parseEntries, project, signed } from "../brief";
+import "./signal-explorer.css";
 
 const FIXTURE_IN_BRIEF = new Set(parseEntries(briefSource).flatMap((e) => e.sources));
 
@@ -189,7 +190,7 @@ function Ledger({ c }: { c: Candidate }) {
 function Detail({ c, inBrief, onNavigate }: { c: Candidate; inBrief: Set<string>; onNavigate: Navigate }) {
   return (
     <div className="xsheet">
-      <div className="kicker">
+      <div className="signal-selected"><div className="kicker">
         Selected candidate · <span className="xid">{c.id}</span>
       </div>
       <p className="dq">“{oneLine(c.userMessage)}”</p>
@@ -204,9 +205,13 @@ function Detail({ c, inBrief, onNavigate }: { c: Candidate; inBrief: Set<string>
           </>
         )}
       </div>
+      </div>
+      <div className="signal-score"><span>Total signal</span><strong>{num(c.score)}</strong><span>points</span><p>A stronger signal helps this moment bubble up into your brief.</p></div>
+      <div className="signal-ledger"><h2>How the score adds up</h2>
       <Ledger c={c} />
-      <section className="source">
-        <h4 className="label">The exchange</h4>
+      </div>
+      <details className="source signal-source" open>
+        <summary>The exchange</summary>
         <div className="exchange-sheet">
           <div className="turn">
             <div className="turn-who">You</div>
@@ -227,7 +232,7 @@ function Detail({ c, inBrief, onNavigate }: { c: Candidate; inBrief: Set<string>
           <dt>Time</dt>
           <dd>{c.ts}</dd>
         </dl>
-      </section>
+      </details>
     </div>
   );
 }
@@ -247,7 +252,9 @@ export default function SignalExplorer({
   // "In brief" tags follow the brief the reader actually sees: the latest
   // live run's sources, or the fixture brief when running on fixtures.
   const [inBrief, setInBrief] = useState<Set<string>>(FIXTURE_IN_BRIEF);
+  const [briefError, setBriefError] = useState<string | null>(null);
   useEffect(() => {
+    setBriefError(null);
     if (!store || store.source === "fixture") {
       setInBrief(FIXTURE_IN_BRIEF);
       return;
@@ -257,7 +264,12 @@ export default function SignalExplorer({
       .then((run) => {
         if (alive) setInBrief(new Set(parseEntries(run?.raw_output ?? "").flatMap((e) => e.sources)));
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        if (alive) {
+          setInBrief(new Set());
+          setBriefError(error instanceof Error ? error.message : String(error));
+        }
+      });
     return () => {
       alive = false;
     };
@@ -286,7 +298,7 @@ export default function SignalExplorer({
 
   if (!store) {
     return (
-      <div className="split">
+      <div className="split signal-explorer">
         <div className="xlist">
           <header className="lhead">
             <div className="kicker">Signal Explorer</div>
@@ -300,7 +312,7 @@ export default function SignalExplorer({
   }
 
   return (
-    <div className="split">
+    <div className="split signal-explorer">
       <div className="xlist">
         <header className="lhead">
           <div className="kicker">Signal Explorer</div>
@@ -313,6 +325,7 @@ export default function SignalExplorer({
             <p className="xnote">The browser build can't run the engine sidecar. The app shell scans live.</p>
           )}
           {store.error && <p className="xnote error">Live scan failed, so this is the fixture: {store.error}</p>}
+          {briefError && <p className="xnote error" role="alert">Couldn't load brief links: {briefError}</p>}
         </header>
         <Filters candidates={store.candidates} filters={filters} onChange={setFilters} />
         <div className="xrows" ref={rowsRef}>

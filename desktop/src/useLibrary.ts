@@ -23,42 +23,62 @@ export function useLibrary(store: StoreState | null) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sources, setSources] = useState<Candidate[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewPending, setReviewPending] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [sourceAttempt, setSourceAttempt] = useState(0);
 
   const live = store?.source === "live";
 
   useEffect(() => {
     if (!live) return;
     let alive = true;
+    setLoading(true);
+    setLoadError(null);
     const t = setTimeout(() => {
       loadConcepts(query)
         .then((rows) => {
-          if (alive) setConcepts(rows);
+          if (alive) {
+            setConcepts(rows);
+            setLoading(false);
+          }
         })
         .catch(() => {
-          if (alive) setConcepts([]);
+          if (alive) {
+            setLoadError("Couldn't load the library.");
+            setLoading(false);
+          }
         });
     }, 150);
     return () => {
       alive = false;
       clearTimeout(t);
     };
-  }, [query, live]);
+  }, [query, live, attempt]);
 
   const selected = useMemo(
     () => (selectedId === null ? null : concepts?.find((c) => c.id === selectedId) ?? null),
     [concepts, selectedId],
   );
 
-  const open = useCallback((c: Concept) => {
-    setSelectedId(c.id);
-    if (!c.sourceIds) {
-      setSources([]);
-      return;
-    }
+  useEffect(() => {
+    if (!selected) return;
+    let alive = true;
     setSources(null);
-    loadCandidatesByIds(c.sourceIds)
-      .then((rows) => setSources(rows))
-      .catch(() => setSources([]));
+    setSourceError(null);
+    if (selected.sourceIds === null) return;
+    loadCandidatesByIds(selected.sourceIds)
+      .then((rows) => { if (alive) setSources(rows); })
+      .catch(() => { if (alive) setSourceError("Couldn't load the exchanges for this concept."); });
+    return () => { alive = false; };
+  }, [selectedId, sourceAttempt]);
+
+  const open = useCallback((c: Concept) => {
+    setReviewError(null);
+    setSelectedId(c.id);
   }, []);
 
   const close = useCallback(() => {
@@ -71,18 +91,44 @@ export function useLibrary(store: StoreState | null) {
     async (concept: Concept) => {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      await seedReview(concept.id, localDate(tomorrow)).catch(() => undefined);
-      const rows = await loadConcepts(query).catch(() => concepts ?? []);
-      setConcepts(rows);
+      setReviewPending(true);
+      setReviewError(null);
+      try {
+        await seedReview(concept.id, localDate(tomorrow));
+      } catch {
+        setReviewError("Couldn't add this concept to review. Please try again.");
+        setReviewPending(false);
+        return;
+      }
+      try {
+        setConcepts(await loadConcepts(query));
+      } catch {
+        setReviewError("Added to review, but couldn't refresh its status. Reopen the library to see it.");
+      } finally {
+        setReviewPending(false);
+      }
     },
     [query, concepts],
   );
 
   const removeReview = useCallback(
     async (concept: Concept) => {
-      await unseedReview(concept.id).catch(() => undefined);
-      const rows = await loadConcepts(query).catch(() => concepts ?? []);
-      setConcepts(rows);
+      setReviewPending(true);
+      setReviewError(null);
+      try {
+        await unseedReview(concept.id);
+      } catch {
+        setReviewError("Couldn't remove this concept from review. Please try again.");
+        setReviewPending(false);
+        return;
+      }
+      try {
+        setConcepts(await loadConcepts(query));
+      } catch {
+        setReviewError("Removed from review, but couldn't refresh its status. Reopen the library to see it.");
+      } finally {
+        setReviewPending(false);
+      }
     },
     [query, concepts],
   );
@@ -101,6 +147,13 @@ export function useLibrary(store: StoreState | null) {
     groups: useMemo(() => groupByDate(concepts ?? []), [concepts]),
     selected,
     sources,
+    loading,
+    loadError,
+    sourceError,
+    reviewError,
+    reviewPending,
+    retry: () => setAttempt((n) => n + 1),
+    retrySources: () => setSourceAttempt((n) => n + 1),
     open,
     close,
     addReview,

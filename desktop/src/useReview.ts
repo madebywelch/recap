@@ -31,6 +31,12 @@ export function useReview(store: StoreState | null) {
   const [revealed, setRevealed] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [sources, setSources] = useState<Candidate[] | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [gradeError, setGradeError] = useState(false);
+  const grading = useRef(false);
+  const sourceRequest = useRef(0);
   const [reschedule, setReschedule] = useState<string | null>(null);
   const [tally, setTally] = useState({ kept: 0, fuzzy: 0, lost: 0 });
   const timer = useRef<number | null>(null);
@@ -40,16 +46,22 @@ export function useReview(store: StoreState | null) {
 
   const refresh = useCallback(async () => {
     if (!live) return;
-    const [due, state] = await Promise.all([loadDueConcepts(today), loadDueOverview(today)]);
-    setQueue(due);
-    setOverview(state);
+    setLoadError(false);
+    setQueue(null);
+    try {
+      const [due, state] = await Promise.all([loadDueConcepts(today), loadDueOverview(today)]);
+      setQueue(due);
+      setOverview(state);
+    } catch {
+      setLoadError(true);
+    }
   }, [live, today]);
 
   // The session is a snapshot: it loads once, and due-changed events do
   // not reorder it mid-session (the nav badge listens for those).
   useEffect(() => {
     if (!live) return;
-    refresh().catch(() => setQueue([]));
+    void refresh();
   }, [live, refresh]);
 
   const current = queue && index < queue.length ? queue[index] : null;
@@ -63,29 +75,39 @@ export function useReview(store: StoreState | null) {
     if (!done || !live) return;
     loadDueOverview(today)
       .then(setOverview)
-      .catch(() => undefined);
+      .catch(() => setLoadError(true));
   }, [done, live, today]);
 
   const reveal = useCallback(() => setRevealed(true), []);
 
-  const expand = useCallback(() => {
-    setExpanded(true);
-    if (!current) return;
-    if (!current.sourceIds) {
-      setSources([]);
+  const expand = useCallback((retry = false) => {
+    if (expanded && !retry) {
+      setExpanded(false);
       return;
     }
-    setSources(null);
+    setExpanded(true);
+    if (!current) return;
+    if (!current.sourceIds || sources !== null || sourceLoading) return;
+    setSourceError(false);
+    setSourceLoading(true);
+    const request = ++sourceRequest.current;
     loadCandidatesByIds(current.sourceIds)
-      .then(setSources)
-      .catch(() => setSources([]));
-  }, [current]);
+      .then((result) => { if (request === sourceRequest.current) setSources(result); })
+      .catch(() => { if (request === sourceRequest.current) setSourceError(true); })
+      .finally(() => { if (request === sourceRequest.current) setSourceLoading(false); });
+  }, [current, expanded, sources, sourceLoading]);
 
   const grade = useCallback(
     async (g: Grade) => {
-      if (!current || reschedule) return;
+      if (!current || reschedule || grading.current) return;
+      grading.current = true;
+      setGradeError(false);
       const next = await applyReview(current.id, g).catch(() => null);
-      if (!next) return;
+      grading.current = false;
+      if (!next) {
+        setGradeError(true);
+        return;
+      }
       const word = g === "got-it" ? "Kept" : g === "fuzzy" ? "Fuzzy" : "Lost";
       setReschedule(`${word} — next review ${dueInWords(next.dueOn, today)}`);
       setTally((t) => ({
@@ -94,10 +116,13 @@ export function useReview(store: StoreState | null) {
         lost: t.lost + (g === "lost-it" ? 1 : 0),
       }));
       timer.current = window.setTimeout(() => {
+        sourceRequest.current++;
         setReschedule(null);
         setRevealed(false);
         setExpanded(false);
         setSources(null);
+        setSourceError(false);
+        setSourceLoading(false);
         setIndex((i) => i + 1);
       }, CONFIRM_MS);
     },
@@ -123,6 +148,7 @@ export function useReview(store: StoreState | null) {
   }, [current, done, grade, reveal, revealed, reschedule]);
 
   useEffect(() => () => {
+    sourceRequest.current++;
     if (timer.current !== null) window.clearTimeout(timer.current);
   }, []);
 
@@ -135,6 +161,11 @@ export function useReview(store: StoreState | null) {
     revealed,
     expanded,
     sources,
+    sourceLoading,
+    sourceError,
+    loadError,
+    gradeError,
+    refresh,
     reschedule,
     tally,
     reveal,
