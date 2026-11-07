@@ -66,6 +66,7 @@
 .concept-reader-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
+  grid-template-rows: auto 1fr;
   gap: 20px;
   align-items: start;
   margin-top: 22px;
@@ -99,6 +100,7 @@
 .concept-review-card,
 .concept-source-card {
   grid-column: 2;
+  align-self: start;
 }
 
 .concept-source-card:has(.concept-sources) {
@@ -130,6 +132,7 @@
 @media (max-width: 1000px) {
   .concept-reader-layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
   }
   .concept-reader-card,
   .concept-review-card,
