@@ -3,12 +3,13 @@ import briefSource from "../../fixtures/daily-brief.md?raw";
 import Exchange from "../Exchange";
 import { Html } from "../md";
 import { brief } from "../fixtures";
-import { localDate, parseEntries, leadOf, signed } from "../brief";
+import { localDate, parseEntries, signed } from "../brief";
 import { dueText, firstSentence } from "../library-filters";
 import { useLibrary } from "../useLibrary";
 import type { Concept, StoreState } from "../store";
 import type { Candidate } from "../fixtures";
 import type { Navigate } from "../App";
+import "./concept-library.css";
 
 /**
  * The spec's Concept Library: FTS search over everything learned so far, a
@@ -36,6 +37,10 @@ function Reader({
   onBack,
   onAdd,
   onRemove,
+  sourceError,
+  reviewError,
+  reviewPending,
+  onRetrySources,
 }: {
   concept: Concept;
   sources: Candidate[] | null;
@@ -44,15 +49,20 @@ function Reader({
   onBack: () => void;
   onAdd: (c: Concept) => void;
   onRemove: (c: Concept) => void;
+  sourceError: string | null;
+  reviewError: string | null;
+  reviewPending: boolean;
+  onRetrySources: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [primary, ...others] = sources ?? [];
   return (
-    <div className="folio-scroll">
-      <div className="sheet">
+    <div className="folio-scroll concept-library">
+      <div className="sheet concept-sheet">
         <button className="text-button" onClick={onBack}>
           ← Back to the library
         </button>
+        <div className="concept-reader-layout">
+        <article className="concept-reader-card">
         <div className="kicker">Concept Library · {dayLabel(concept.date)}</div>
         <h1 className="display">
           <Html md={concept.title} />
@@ -60,6 +70,9 @@ function Reader({
         <p className="entry-what reader-body">
           <Html md={concept.body} />
         </p>
+        </article>
+        <section className="concept-review-card">
+        <div className="kicker">Review</div>
         <p className="reader-meta">
           {concept.review ? (
             <>
@@ -74,20 +87,27 @@ function Reader({
         </p>
         <div className="closing">
           {concept.review ? (
-            <button className="button" onClick={() => onRemove(concept)}>
+            <button className="button" disabled={reviewPending} onClick={() => onRemove(concept)}>
               Remove from review
             </button>
           ) : (
-            <button className="button primary" onClick={() => onAdd(concept)}>
+            <button className="button primary" disabled={reviewPending} onClick={() => onAdd(concept)}>
               Add to review
             </button>
           )}
         </div>
+        {reviewPending && <p className="quiet-note" role="status">Updating review…</p>}
+        {reviewError && <p className="quiet-note" role="alert">{reviewError}</p>}
+        </section>
 
+        <section className="concept-source-card">
+        <div className="kicker">From your conversations</div>
         {concept.sourceIds === null ? (
           <p className="quiet-note">
             This concept came from a pre-app archive — the exchange behind it wasn't recorded.
           </p>
+        ) : sourceError ? (
+          <p className="quiet-note" role="alert">{sourceError} <button className="link" onClick={onRetrySources}>Try again</button></p>
         ) : sources === null ? (
           <p className="quiet-note">Reading the archive…</p>
         ) : sources.length === 0 ? (
@@ -98,14 +118,15 @@ function Reader({
               {open ? "Hide the exchange ↑" : "Show the exchange ↓"}
             </button>
             {open && (
-              <section className="source">
+              <div className="concept-sources">
+              {sources.map((source) => <section className="source" key={source.id}>
                 <h4 className="label">The exchange that started it</h4>
-                <Exchange c={primary} />
+                <Exchange c={source} />
                 <div className="why">
                   <span>
-                    Why it surfaced · <b>score {primary.score}</b>
+                    Why it surfaced · <b>score {source.score}</b>
                   </span>
-                  {primary.signals.map((s) => (
+                  {source.signals.map((s) => (
                     <span
                       key={s.name}
                       className={"signal" + (s.side === "user" ? " user" : "") + (s.weight < 0 ? " neg" : "")}
@@ -114,23 +135,20 @@ function Reader({
                     </span>
                   ))}
                 </div>
-                {others.length > 0 && (
-                  <p className="also">
-                    Also drawn from {others.length === 1 ? "1 more exchange" : `${others.length} more exchanges`}:{" "}
-                    {others.map((o) => `“${leadOf(o).text}”`).join(", ")}
-                  </p>
-                )}
-                {inWindow(primary.id) ? (
-                  <button className="link" onClick={() => onNavigate("signals", primary.id)}>
+                {inWindow(source.id) ? (
+                  <button className="link" onClick={() => onNavigate("signals", source.id)}>
                     Open in Signal Explorer →
                   </button>
                 ) : (
                   <p className="quiet-note">From an earlier scan window — rescan that day to open it in the Explorer.</p>
                 )}
-              </section>
+              </section>)}
+              </div>
             )}
           </>
         )}
+        </section>
+        </div>
       </div>
     </div>
   );
@@ -138,12 +156,12 @@ function Reader({
 
 /** The browser build has no store; the shelf shows the fixture brief as a
  *  designed preview, honestly labeled. */
-function FixtureShelf() {
+function FixtureShelf({ store }: { store: StoreState }) {
   const entries = parseEntries(briefSource);
   const date = new Date(brief.meta.generatedAt.replace(" ", "T"));
   return (
-    <div className="folio-scroll">
-      <div className="sheet">
+    <div className="folio-scroll concept-library">
+      <div className="sheet concept-sheet">
         <div className="kicker">Concept Library</div>
         <h1 className="display">Everything you've learned, kept.</h1>
         <p className="dek">
@@ -161,7 +179,12 @@ function FixtureShelf() {
                 <Html md={e.title} />
               </span>
               <span className="shelf-lede">
-                <Html md={e.lede} />
+                <Html md={firstSentence(e.body.trim().replace(/\s+/g, " "))} />
+              </span>
+              <span className="shelf-meta">
+                <span>{date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</span>
+                {store.candidates.some((candidate) => e.sources.includes(candidate.id)) && <span>Conversation source</span>}
+                {[...new Set(store.candidates.filter((candidate) => e.sources.includes(candidate.id)).map((candidate) => candidate.tool))].map((tool) => <span key={tool}>{tool}</span>)}
               </span>
             </div>
           ))}
@@ -172,10 +195,10 @@ function FixtureShelf() {
 }
 
 export default function ConceptLibrary({ store, onNavigate }: { store: StoreState | null; onNavigate: Navigate }) {
-  const { concepts, query, setQuery, groups, selected, sources, open, close, addReview, removeReview, inWindow } =
+  const { concepts, query, setQuery, groups, selected, sources, loading, loadError, sourceError, reviewError, reviewPending, retry, retrySources, open, close, addReview, removeReview, inWindow } =
     useLibrary(store);
 
-  if (store?.source === "fixture") return <FixtureShelf />;
+  if (store?.source === "fixture") return <FixtureShelf store={store} />;
 
   if (selected) {
     return (
@@ -187,14 +210,18 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
         onBack={close}
         onAdd={addReview}
         onRemove={removeReview}
+        sourceError={sourceError}
+        reviewError={reviewError}
+        reviewPending={reviewPending}
+        onRetrySources={retrySources}
       />
     );
   }
 
-  if (!concepts) {
+  if (!store) {
     return (
-      <div className="folio-scroll">
-        <div className="sheet">
+      <div className="folio-scroll concept-library">
+        <div className="sheet concept-sheet">
           <div className="kicker">Concept Library</div>
           <p className="dek">Reading the library…</p>
         </div>
@@ -204,8 +231,8 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
 
   const total = groups.reduce((n, g) => n + g.concepts.length, 0);
   return (
-    <div className="folio-scroll">
-      <div className="sheet">
+    <div className="folio-scroll concept-library">
+      <div className="sheet concept-sheet">
         <div className="kicker">Concept Library</div>
         <h1 className="display">Everything you've learned, kept.</h1>
         <p className="dek">
@@ -221,6 +248,9 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
+        {loading && <p className="quiet-note" role="status">Reading the library…</p>}
+        {loadError && <p className="quiet-note" role="alert">{loadError} <button className="link" onClick={retry}>Try again</button></p>}
+        {concepts && !loading && !loadError && <>
         <p className="library-count">
           {query.trim()
             ? `${total === 1 ? "One match" : `${total} matches`} for “${query.trim()}”`
@@ -231,8 +261,8 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
 
         {groups.length === 0 && (
           <p className="quiet-note">
-            Nothing here yet. Write a brief, or drop recap-*.md archives into ~/.claude/morning-recap and relaunch —
-            they're imported on open.
+            {query.trim() ? "No concepts match this search. Try a different search." :
+              "Nothing here yet. Write a brief, or drop recap-*.md archives into ~/.claude/morning-recap and relaunch — they're imported on open."}
           </p>
         )}
 
@@ -259,7 +289,12 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
                   <Html md={c.title} />
                 </span>
                 <span className="shelf-lede">
-                  <Html md={firstSentence(c.body)} />
+                  <Html md={firstSentence(c.body.trim().replace(/\s+/g, " "))} />
+                </span>
+                <span className="shelf-meta">
+                  <span>{dayLabel(c.date)}</span>
+                  {store.candidates.some((candidate) => c.sourceIds?.includes(candidate.id)) && <span>Conversation source</span>}
+                  {[...new Set(store.candidates.filter((candidate) => c.sourceIds?.includes(candidate.id)).map((candidate) => candidate.tool))].map((tool) => <span key={tool}>{tool}</span>)}
                 </span>
                 {c.review && (
                   <span className="tag">{dueText(c.review.dueOn, localDate(new Date()))}</span>
@@ -268,6 +303,7 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
             ))}
           </div>
         ))}
+        </>}
       </div>
     </div>
   );
