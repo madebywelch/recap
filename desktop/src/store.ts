@@ -187,6 +187,27 @@ interface CandidateRow {
 }
 
 let db: Database | null = null;
+let snapshotQueue = Promise.resolve();
+
+function refreshWidgetSnapshot(): Promise<void> {
+  snapshotQueue = snapshotQueue.then(async () => {
+    if (!db) return;
+    const concepts = await db.select<{ title: string }[]>(
+      `SELECT title FROM concepts ORDER BY date DESC, id ASC LIMIT 1`,
+    );
+    const due = await db.select<{ n: number }[]>(
+      `SELECT COUNT(*) AS n FROM review_state WHERE due_on <= $1`,
+      [localDate(new Date())],
+    );
+    await invoke("write_widget_snapshot", {
+      concept: concepts[0]?.title ?? null,
+      dueCount: due[0]?.n ?? 0,
+    });
+  }).catch((error: unknown) => {
+    console.warn("Could not update widget snapshot", error);
+  });
+  return snapshotQueue;
+}
 
 function fixtureStore(error?: string): StoreState {
   const scan = validateScanResult(fixtureScanSource);
@@ -296,12 +317,14 @@ export async function initStore(): Promise<StoreState> {
     await db.execute(CREATE_CONCEPTS_FTS);
     await db.execute(CONCEPT_FTS_TRIGGERS);
     await db.execute(CREATE_CONCEPTS_KEY);
+    void refreshWidgetSnapshot();
     const raw = await invoke<string>("run_scan");
     const scan = validateScanResult(JSON.parse(raw));
     await ingest(scan);
     // Idempotent: an already-recorded file (its run row exists) is skipped,
     // so relaunching with the same history adds nothing.
     await importArchives().catch(() => undefined);
+    void refreshWidgetSnapshot();
     const candidates = await loadCandidates();
     return {
       source: "live",
@@ -385,6 +408,7 @@ export async function recordGeneration(rec: GenerationRecord): Promise<void> {
     );
     emitDueChanged();
   }
+  void refreshWidgetSnapshot();
 }
 
 /** One archive file as the shell reads it for the first-run import. */
@@ -521,6 +545,7 @@ export async function seedReview(conceptId: number, dueOn: string): Promise<void
     [conceptId, dueOn],
   );
   emitDueChanged();
+  void refreshWidgetSnapshot();
 }
 
 /** Removes a concept from review; its grade history goes with it. */
@@ -528,6 +553,7 @@ export async function unseedReview(conceptId: number): Promise<void> {
   if (!db) return;
   await db.execute(`DELETE FROM review_state WHERE concept_id = $1`, [conceptId]);
   emitDueChanged();
+  void refreshWidgetSnapshot();
 }
 
 /** Screens that show due counts (the nav badge, the Review screen) hear
@@ -602,6 +628,7 @@ export async function applyReview(conceptId: number, grade: Grade): Promise<Revi
     ],
   );
   emitDueChanged();
+  void refreshWidgetSnapshot();
   return next;
 }
 

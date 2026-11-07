@@ -635,6 +635,65 @@ async fn sidecar_stdout(app: &tauri::AppHandle, args: &[&str]) -> Result<String,
     String::from_utf8(output.stdout).map_err(|e| format!("sidecar output was not UTF-8: {e}"))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WidgetSnapshot {
+    concept: Option<String>,
+    due_count: u32,
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn save_widget_snapshot(data_dir: &std::path::Path, snapshot: &WidgetSnapshot) -> Result<(), String> {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    let data = serde_json::to_vec(snapshot).map_err(|e| e.to_string())?;
+    let temp = data_dir.join(format!(".widget-data-{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let result = (|| -> std::io::Result<()> {
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temp)?;
+        file.write_all(&data)?;
+        file.sync_all()?;
+        std::fs::rename(&temp, data_dir.join("widget-data.json"))?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    result.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn write_widget_snapshot(concept: Option<String>, due_count: u32) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
+        let data_dir = PathBuf::from(home).join("Library/Containers/com.madebywelch.recap.widget/Data");
+        save_widget_snapshot(&data_dir, &WidgetSnapshot { concept, due_count })?;
+        match std::env::current_exe() {
+            Ok(exe) => {
+                if let Some(dir) = exe.parent() {
+                    let helper = dir.join("recap-widget-reload");
+                    if helper.exists() {
+                        match std::process::Command::new(helper).status() {
+                            Ok(status) if status.success() => (),
+                            Ok(status) => eprintln!("Widget reload helper failed: {status}"),
+                            Err(error) => eprintln!("Could not start widget reload helper: {error}"),
+                        }
+                    }
+                }
+            }
+            Err(error) => eprintln!("Could not locate widget reload helper: {error}"),
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (concept, due_count);
+        Ok(())
+    }
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -648,7 +707,8 @@ fn main() {
             detect_sources,
             generate_brief,
             cancel_generation,
-            read_archives
+            read_archives,
+            write_widget_snapshot
         ])
         .build(tauri::generate_context!())
         .expect("error while building the recap app");
@@ -666,6 +726,23 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn widget_snapshot_is_atomic_and_does_not_create_container() {
+        let root = std::env::temp_dir().join(format!("recap-widget-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let data = root.join("Data");
+        let snapshot = WidgetSnapshot { concept: None, due_count: 3 };
+        assert!(save_widget_snapshot(&data, &snapshot).is_err());
+        assert!(!root.exists());
+        std::fs::create_dir_all(&data).unwrap();
+        save_widget_snapshot(&data, &snapshot).unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(data.join("widget-data.json")).unwrap()).unwrap(), serde_json::json!({"concept": null, "dueCount": 3}));
+        save_widget_snapshot(&data, &WidgetSnapshot { concept: Some("Ownership".into()), due_count: 0 }).unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(data.join("widget-data.json")).unwrap()).unwrap(), serde_json::json!({"concept": "Ownership", "dueCount": 0}));
+        assert_eq!(std::fs::read_dir(&data).unwrap().count(), 1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     /// The clean-machine contract for augmented_path: a CLI installed in
     /// the user's own bin dir is found with no shell PATH at all, missing
