@@ -2848,12 +2848,14 @@ name = "recap-desktop"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "objc2-app-kit",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-shell",
  "tauri-plugin-sql",
+ "window-vibrancy",
 ]
 
 [[package]]
