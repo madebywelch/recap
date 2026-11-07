@@ -16,12 +16,12 @@ export type Screen = "brief" | "library" | "signals" | "review" | "settings";
 /** Switch screens; a candidate id opens the Explorer on that candidate. */
 export type Navigate = (to: Screen, candidateId?: string) => void;
 
-const NAV: { id: Screen; label: string }[] = [
-  { id: "brief", label: "Daily Brief" },
-  { id: "library", label: "Concept Library" },
-  { id: "signals", label: "Signal Explorer" },
-  { id: "review", label: "Review" },
-  { id: "settings", label: "Settings" },
+const NAV: { id: Screen; label: string; icon: string }[] = [
+  { id: "brief", label: "Daily Brief", icon: "◫" },
+  { id: "library", label: "Concept Library", icon: "▦" },
+  { id: "signals", label: "Signal Explorer", icon: "⌁" },
+  { id: "review", label: "Review", icon: "◎" },
+  { id: "settings", label: "Settings", icon: "⚙" },
 ];
 
 /** The welcome sheet's lifecycle: unknown until settings load, shown until
@@ -103,29 +103,32 @@ export default function App() {
       <div className="titlebar" data-tauri-drag-region />
       <aside className="sidebar">
         <div className="wordmark">
-          recap<span className="wordmark-tag">desktop</span>
+          <span className="wordmark-icon" aria-hidden>✳</span> recap
         </div>
-        <nav className="nav">
+        <div className="nav-label">Your learning</div>
+        <nav className="nav" aria-label="Your learning">
           {NAV.map((item) => (
             <button
               key={item.id}
               className={screen === item.id ? "nav-item active" : "nav-item"}
               onClick={() => go(item.id)}
+              aria-current={screen === item.id ? "page" : undefined}
             >
-              {item.label}
+              <span className="nav-icon" aria-hidden>{item.icon}</span>{item.label}
               {item.id === "review" && dueCount > 0 && <span className="nav-badge">{dueCount}</span>}
             </button>
           ))}
         </nav>
         <div className="sidebar-foot">
-          {store
+          <span className="status-dot" aria-hidden /> {store
             ? store.source === "live"
-              ? "live · engine sidecar"
-              : "fixture data"
-            : "scanning…"}
+              ? "Local workspace"
+              : "Example data"
+            : "Scanning sessions…"}
         </div>
       </aside>
       <main className="content">
+        <header className="workspace-bar"><span>Your space <span aria-hidden> / </span> <strong>{NAV.find((item) => item.id === screen)?.label}</strong></span><span>{store?.source === "fixture" ? "Example data" : "All local, all yours"}</span></header>
         {screen === "brief" && <DailyBrief store={store} onNavigate={go} />}
         {screen === "library" && <ConceptLibrary store={store} onNavigate={go} />}
         {screen === "signals" && <SignalExplorer store={store} focus={focus} onNavigate={go} />}
@@ -143,4 +146,3 @@ export default function App() {
     </div>
   );
 }
-
