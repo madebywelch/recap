@@ -236,17 +236,19 @@ function Generating({
 }
 
 /** The spec's error-state table, one card per row. */
-function ErrorCard({ error, onRetry, onDismiss }: { error: GenerationError; onRetry: () => void; onDismiss: () => void }) {
+function ErrorCard({ error, loadError, onRetry, onDismiss }: { error: GenerationError; loadError: boolean; onRetry: () => void; onDismiss: () => void }) {
   const [open, setOpen] = useState(false);
   const recourse =
-    error.kind === "no-cli"
+    loadError
+      ? "Try loading the brief again."
+      : error.kind === "no-cli"
       ? "Install a CLI, or set a custom path in Settings."
       : error.kind === "timeout"
         ? "Raise the timeout in Settings and retry."
         : "Retry, or widen the window and rescan.";
   return (
     <div className="sheet gen-sheet">
-      <div className="kicker">Daily brief · generation</div>
+      <div className="kicker">Daily brief · {loadError ? "loading" : "generation"}</div>
       <h1 className="display">{error.title}</h1>
       <p className="dek">{recourse}</p>
       {error.detail && (
@@ -284,7 +286,7 @@ function ScanningSheet() {
 }
 
 export default function DailyBrief({ store, onNavigate }: { store: StoreState | null; onNavigate: Navigate }) {
-  const { status, view, error, phase, elapsed, detection, generate, cancel, dismissError } = useBrief(store);
+  const { status, view, error, loadError, phase, elapsed, detection, generate, cancel, dismissError } = useBrief(store);
   const [levels, setLevels] = useState<Level[]>([]);
   const [done, setDone] = useState(false);
 
@@ -303,7 +305,7 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
   if (status === "error" && error) {
     return (
       <div className="folio-scroll">
-        <ErrorCard error={error} onRetry={generate} onDismiss={dismissError} />
+        <ErrorCard error={error} loadError={loadError} onRetry={loadError ? dismissError : generate} onDismiss={dismissError} />
       </div>
     );
   }
@@ -388,14 +390,13 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
   return (
     <div className="folio-scroll">
       <div className="sheet">
-        <div className="kicker">Daily brief · {new Date(view.date + "T00:00").toLocaleDateString([], { weekday: "long" })}</div>
-        <h1 className="display">{new Date(view.date + "T00:00").toLocaleDateString([], { month: "long", day: "numeric" })}</h1>
+        <div className="kicker">{new Date(view.date + "T00:00").toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })} · Your daily brief</div>
+        <h1 className="display">Follow your curiosity.</h1>
         <p className="dek">
           {count(entries.length, "idea", true)} from the last day's sessions, ranked by how much they looked like learning. About{" "}
           {count(readMinutes(entries), "minute")}, then you're done.
         </p>
         <div className="brief-head">
-          <Facts view={view} />
           {store?.source === "live" && (
             <button className="text-button" onClick={generate}>
               Rewrite today's brief
@@ -403,6 +404,7 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
           )}
         </div>
 
+        <div className="brief-layout"><div className="brief-entries">
         {entries.map((e, i) => (
           <Entry
             key={e.title}
@@ -435,6 +437,10 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
             I'm done for today
           </button>
         </div>
+        </div><aside className="brief-aside">
+          <div className="practice-card"><div className="kicker">Your next small step</div><h2>Remember the idea, not just the answer.</h2><p>Try a short recall question when you're ready.</p><button className="button primary" onClick={() => onNavigate("review")}>Start practice →</button></div>
+          <div className="brief-facts-card"><div className="kicker">Behind this brief</div><Facts view={view} /></div>
+        </aside></div>
       </div>
     </div>
   );

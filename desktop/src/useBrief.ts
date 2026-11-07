@@ -84,6 +84,7 @@ export function useBrief(store: StoreState | null) {
   const [status, setStatus] = useState<BriefStatus>("loading");
   const [view, setView] = useState<BriefView | null>(null);
   const [error, setError] = useState<GenerationError | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [phase, setPhase] = useState<PhaseEvent | null>(null);
   const [elapsed, setElapsed] = useState(0);
   /** CLI preflight for the write-the-brief screen, spec §Inference. */
@@ -115,8 +116,12 @@ export function useBrief(store: StoreState | null) {
       setStatus("ready");
       return;
     }
-    showBrief(store).catch(() => {
-      if (alive) setStatus("error");
+    showBrief(store).catch((e) => {
+      if (alive) {
+        setError({ kind: "failed", title: "Could not load today's brief.", detail: e instanceof Error ? e.message : String(e) });
+        setLoadError(true);
+        setStatus("error");
+      }
     });
     return () => {
       alive = false;
@@ -125,6 +130,7 @@ export function useBrief(store: StoreState | null) {
 
   const generate = useCallback(async () => {
     if (!store || store.source !== "live") return;
+    setLoadError(false);
     cancelledRef.current = false;
     setStatus("generating");
     setPhase(null);
@@ -188,8 +194,15 @@ export function useBrief(store: StoreState | null) {
   /** Leave the error card back to the pre-generation view. */
   const dismissError = useCallback(async () => {
     if (!store) return;
-    await showBrief(store);
+    try {
+      await showBrief(store);
+      setLoadError(false);
+    } catch (e) {
+      setError({ kind: "failed", title: "Could not load today's brief.", detail: e instanceof Error ? e.message : String(e) });
+      setLoadError(true);
+      setStatus("error");
+    }
   }, [store, showBrief]);
 
-  return { status, view, error, phase, elapsed, detection, generate, cancel, dismissError };
+  return { status, view, error, loadError, phase, elapsed, detection, generate, cancel, dismissError };
 }
