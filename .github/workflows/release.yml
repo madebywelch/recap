@@ -16,7 +16,7 @@ on:
 
 jobs:
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     # softprops/action-gh-release creates the GitHub Release and attaches
     # the dmg on a v* tag; the default GITHUB_TOKEN is read-only, which
     # failed the first tagged run with 403 "Resource not accessible by
