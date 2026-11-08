@@ -5,7 +5,6 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { startVibrancy } from "./vibrancy";
 import "./styles.css";
 import "./folio.css";
-import "./studio.css";
 
 if (isTauri()) {
   startVibrancy(

@@ -43,6 +43,7 @@ it("renders load retry, source retry and exchange disclosure", async () => {
   expect(screen.queryByText("Source question")).toBeNull();
   fireEvent.click(disclosure);
   expect(screen.getByText("Source question")).toBeTruthy();
+  expect(screen.getByText("Source question").closest(".concept-source-card")?.parentElement?.className).toBe("concept-reader-layout");
   expect(screen.getByRole("button", { name: /Hide the exchange/ }).getAttribute("aria-expanded")).toBe("true");
 
   fireEvent.click(screen.getByRole("button", { name: "Add to review" }));

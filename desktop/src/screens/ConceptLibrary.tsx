@@ -71,6 +71,7 @@ function Reader({
           <Html md={concept.body} />
         </p>
         </article>
+        <aside className="concept-reader-aside">
         <section className="concept-review-card">
         <div className="kicker">Review</div>
         <p className="reader-meta">
@@ -99,6 +100,7 @@ function Reader({
         {reviewPending && <p className="quiet-note" role="status">Updating review…</p>}
         {reviewError && <p className="quiet-note" role="alert">{reviewError}</p>}
         </section>
+        </aside>
 
         <section className="concept-source-card">
         <div className="kicker">From your conversations</div>

@@ -1,7 +1,3 @@
-.concept-library .concept-sheet {
-  max-width: 1400px;
-}
-
 .concept-library .display {
   overflow-wrap: anywhere;
 }
@@ -66,7 +62,6 @@
 .concept-reader-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
-  grid-template-rows: auto 1fr;
   gap: 20px;
   align-items: start;
   margin-top: 22px;
@@ -92,20 +87,11 @@
   white-space: pre-wrap;
 }
 
-.concept-reader-card {
-  grid-column: 1;
-  grid-row: 1 / span 2;
-}
-
-.concept-review-card,
-.concept-source-card {
-  grid-column: 2;
-  align-self: start;
-}
-
-.concept-source-card:has(.concept-sources) {
-  grid-column: 1 / -1;
-  grid-row: 3;
+.concept-reader-aside {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  align-content: start;
 }
 
 .concept-review-card {
@@ -124,22 +110,20 @@
   margin-top: 20px;
 }
 
+.concept-source-card {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: calc(80ch + 96px);
+}
+
 .concept-source-card .turn pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1050px) {
   .concept-reader-layout {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: none;
-  }
-  .concept-reader-card,
-  .concept-review-card,
-  .concept-source-card,
-  .concept-source-card:has(.concept-sources) {
-    grid-column: 1;
-    grid-row: auto;
   }
 }
 
