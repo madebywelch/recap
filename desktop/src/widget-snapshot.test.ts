@@ -19,7 +19,7 @@ describe("widget snapshot", () => {
     vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
     mocks.execute.mockReset().mockResolvedValue({ lastInsertId: 1 });
     mocks.select.mockReset().mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT title FROM concepts")) return [{ title: "Ownership" }];
+      if (sql.includes("SELECT title FROM concepts")) return [{ title: "Ownership" }, { title: "Lifetimes" }, { title: "Borrowing" }];
       if (sql.includes("COUNT(*) AS n FROM review_state WHERE")) return [{ n: 2 }];
       if (sql.includes("SELECT interval_days")) return [{ interval_days: 1, ease: 2.5, reviews: 0, lapses: 0, last_grade: null, due_on: "2026-01-01", last_reviewed_at: null }];
       return [];
@@ -35,7 +35,11 @@ describe("widget snapshot", () => {
     expect((await initStore()).source).toBe("live");
     const snapshots = () => mocks.invoke.mock.calls.filter(([command]) => command === "write_widget_snapshot");
     await vi.waitFor(() => expect(snapshots()).toHaveLength(2));
-    expect(snapshots()[0][1]).toEqual({ concept: "Ownership", dueCount: 2 });
+    expect(snapshots()[0][1]).toEqual({ concepts: ["Ownership", "Lifetimes", "Borrowing"], date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), dueCount: 2 });
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE date = $1 ORDER BY id ASC LIMIT 3"),
+      [snapshots()[0][1].date],
+    );
     await recordGeneration({ startedAt: "", finishedAt: "", date: "2026-01-01", since: "", tools: "", sessions: 0, pairs: 0, status: "done", inferenceCli: "", archivePath: null, rawOutput: "" });
     await seedReview(1, "2026-01-01");
     await unseedReview(1);
@@ -61,6 +65,6 @@ describe("widget snapshot", () => {
       if (command === "run_scan") throw new Error("scan failed");
     });
     expect((await initStore()).source).toBe("fixture");
-    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("write_widget_snapshot", { concept: null, dueCount: 0 }));
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("write_widget_snapshot", { concepts: [], date: expect.any(String), dueCount: 0 }));
   });
 });

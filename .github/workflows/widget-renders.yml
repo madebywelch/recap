@@ -1,0 +1,28 @@
+name: widget renders
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/macos-widget/**'
+      - '.github/workflows/widget-renders.yml'
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render widget views
+        run: |
+          mkdir -p "$RUNNER_TEMP/widget-renders"
+          xcrun swiftc -parse-as-library -D WIDGET_RENDER -target arm64-apple-macos13.0 \
+            desktop/macos-widget/Sources/RecapWidget.swift desktop/macos-widget/Render/main.swift \
+            -o "$RUNNER_TEMP/render-widgets"
+          "$RUNNER_TEMP/render-widgets" "$RUNNER_TEMP/widget-renders"
+          test "$(find "$RUNNER_TEMP/widget-renders" -name '*.png' | wc -l | tr -d ' ')" = 8
+          ! cmp -s "$RUNNER_TEMP/widget-renders/medium-light-data.png" "$RUNNER_TEMP/widget-renders/medium-dark-data.png"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: widget-renders
+          path: ${{ runner.temp }}/widget-renders/*.png
+          if-no-files-found: error
