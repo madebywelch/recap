@@ -192,15 +192,18 @@ let snapshotQueue = Promise.resolve();
 function refreshWidgetSnapshot(): Promise<void> {
   snapshotQueue = snapshotQueue.then(async () => {
     if (!db) return;
+    const today = localDate(new Date());
     const concepts = await db.select<{ title: string }[]>(
-      `SELECT title FROM concepts ORDER BY date DESC, id ASC LIMIT 1`,
+      `SELECT title FROM concepts WHERE date = $1 ORDER BY id ASC LIMIT 3`,
+      [today],
     );
     const due = await db.select<{ n: number }[]>(
       `SELECT COUNT(*) AS n FROM review_state WHERE due_on <= $1`,
-      [localDate(new Date())],
+      [today],
     );
     await invoke("write_widget_snapshot", {
-      concept: concepts[0]?.title ?? null,
+      concepts: concepts.map((concept) => concept.title),
+      date: today,
       dueCount: due[0]?.n ?? 0,
     });
   }).catch((error: unknown) => {

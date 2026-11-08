@@ -2,8 +2,25 @@ import SwiftUI
 import WidgetKit
 
 struct Snapshot: Decodable {
-    let concept: String?
+    let concepts: [String]
+    let date: String
     let dueCount: Int
+
+    init(concepts: [String], dueCount: Int) {
+        self.concepts = concepts
+        self.date = ""
+        self.dueCount = dueCount
+    }
+
+    private enum CodingKeys: String, CodingKey { case concepts, concept, date, dueCount }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        concepts = try values.decodeIfPresent([String].self, forKey: .concepts)
+            ?? values.decodeIfPresent(String.self, forKey: .concept).map { [$0] } ?? []
+        date = try values.decodeIfPresent(String.self, forKey: .date) ?? ""
+        dueCount = try values.decode(Int.self, forKey: .dueCount)
+    }
 }
 
 struct Entry: TimelineEntry {
@@ -27,7 +44,11 @@ private struct Provider: TimelineProvider {
 
     private func readEntry() -> Entry {
         let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("widget-data.json")
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
         let snapshot = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(Snapshot.self, from: $0) }
+            .flatMap { $0.date == formatter.string(from: Date()) ? $0 : nil }
         return Entry(date: Date(), snapshot: snapshot)
     }
 }
@@ -66,39 +87,41 @@ struct WidgetView: View {
             HStack {
                 Text("✳ recap").font(.system(size: 14, weight: .bold))
                 Spacer(minLength: 4)
-                if family == .systemMedium {
-                    Text("TODAY’S FOCUS")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(accent)
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .background(accent.opacity(dark ? 0.18 : 0.12), in: Capsule())
-                } else {
+                if family == .systemSmall {
                     Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .semibold))
                 }
             }
             Spacer(minLength: 8)
-            VStack(alignment: .leading, spacing: 5) {
-            if let snapshot = entry.snapshot, let concept = snapshot.concept, !concept.isEmpty {
+            if let snapshot = entry.snapshot, !snapshot.concepts.isEmpty {
                 if family == .systemSmall {
-                    Text("\(snapshot.dueCount)").font(.system(size: 35, weight: .bold))
-                    Text(snapshot.dueCount == 1 ? "idea to revisit" : "ideas to revisit")
-                        .font(.system(size: 11))
-                    Text(concept).font(.system(size: 11, weight: .medium)).foregroundStyle(muted).lineLimit(2).padding(.top, 4)
-                } else {
-                    HStack(alignment: .top, spacing: 8) {
-                        Circle().fill(dark ? Color(red: 139/255, green: 211/255, blue: 184/255) : Color(red: 66/255, green: 140/255, blue: 117/255)).frame(width: 8, height: 8).padding(.top, 5)
-                        Text(concept).font(.system(size: 16, weight: .bold)).lineLimit(3)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("\(snapshot.dueCount)").font(.system(size: 35, weight: .bold))
+                        Text("due for review").font(.system(size: 11))
+                        Text("TODAY’S FOCUS").font(.system(size: 9, weight: .bold)).foregroundStyle(accent).padding(.top, 4)
+                        Text(snapshot.concepts[0]).font(.system(size: 11, weight: .medium)).foregroundStyle(muted).lineLimit(2)
                     }
-                    Text("\(snapshot.dueCount) due for review").font(.system(size: 11)).foregroundStyle(muted).padding(.leading, 16)
+                } else {
+                    HStack(alignment: .center, spacing: 12) {
+                        ViewThatFits(in: .vertical) {
+                            ForEach((1...min(3, snapshot.concepts.count)).reversed(), id: \.self) { count in
+                                VStack(alignment: .leading, spacing: 5) {
+                                    ForEach(Array(snapshot.concepts.prefix(count).enumerated()), id: \.offset) { _, title in
+                                        Text(title).font(.system(size: 12, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("\(snapshot.dueCount)").font(.system(size: 35, weight: .bold))
+                            Text("to review").font(.system(size: 11)).foregroundStyle(muted)
+                        }.frame(width: 70, alignment: .leading)
+                    }
                 }
-            } else if let snapshot = entry.snapshot {
-                Text("No brief yet").font(.system(size: 17, weight: .bold))
-                Text("Open Recap to create your first brief.").font(.system(size: 11)).foregroundStyle(muted).padding(.top, 5)
-                Text("\(snapshot.dueCount) due for review").font(.system(size: 11)).foregroundStyle(muted)
             } else {
-                Text("Open Recap").font(.system(size: 17, weight: .bold))
-                Text("Your brief and review count will appear here.").font(.system(size: 11)).foregroundStyle(muted).padding(.top, 5)
-            }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(entry.snapshot == nil ? "Open Recap" : "No brief yet").font(.system(size: 17, weight: .bold))
+                    Text("Open Recap to create your first brief.").font(.system(size: 11)).foregroundStyle(muted)
+                }
             }
             Spacer(minLength: 8)
         }

@@ -638,7 +638,8 @@ async fn sidecar_stdout(app: &tauri::AppHandle, args: &[&str]) -> Result<String,
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WidgetSnapshot {
-    concept: Option<String>,
+    concepts: Vec<String>,
+    date: String,
     due_count: u32,
 }
 
@@ -664,12 +665,12 @@ fn save_widget_snapshot(data_dir: &std::path::Path, snapshot: &WidgetSnapshot) -
 }
 
 #[tauri::command]
-async fn write_widget_snapshot(concept: Option<String>, due_count: u32) -> Result<(), String> {
+async fn write_widget_snapshot(concepts: Vec<String>, date: String, due_count: u32) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
         let data_dir = PathBuf::from(home).join("Library/Containers/com.madebywelch.recap.widget/Data");
-        save_widget_snapshot(&data_dir, &WidgetSnapshot { concept, due_count })?;
+        save_widget_snapshot(&data_dir, &WidgetSnapshot { concepts, date, due_count })?;
         match std::env::current_exe() {
             Ok(exe) => {
                 if let Some(dir) = exe.parent() {
@@ -689,7 +690,7 @@ async fn write_widget_snapshot(concept: Option<String>, due_count: u32) -> Resul
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (concept, due_count);
+        let _ = (concepts, date, due_count);
         Ok(())
     }
 }
@@ -792,14 +793,14 @@ mod tests {
         let root = std::env::temp_dir().join(format!("recap-widget-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let data = root.join("Data");
-        let snapshot = WidgetSnapshot { concept: None, due_count: 3 };
+        let snapshot = WidgetSnapshot { concepts: vec![], date: "2026-01-01".into(), due_count: 3 };
         assert!(save_widget_snapshot(&data, &snapshot).is_err());
         assert!(!root.exists());
         std::fs::create_dir_all(&data).unwrap();
         save_widget_snapshot(&data, &snapshot).unwrap();
-        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(data.join("widget-data.json")).unwrap()).unwrap(), serde_json::json!({"concept": null, "dueCount": 3}));
-        save_widget_snapshot(&data, &WidgetSnapshot { concept: Some("Ownership".into()), due_count: 0 }).unwrap();
-        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(data.join("widget-data.json")).unwrap()).unwrap(), serde_json::json!({"concept": "Ownership", "dueCount": 0}));
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(data.join("widget-data.json")).unwrap()).unwrap(), serde_json::json!({"concepts": [], "date": "2026-01-01", "dueCount": 3}));
+        save_widget_snapshot(&data, &WidgetSnapshot { concepts: vec!["Ownership".into()], date: "2026-01-02".into(), due_count: 0 }).unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(data.join("widget-data.json")).unwrap()).unwrap(), serde_json::json!({"concepts": ["Ownership"], "date": "2026-01-02", "dueCount": 0}));
         assert_eq!(std::fs::read_dir(&data).unwrap().count(), 1);
         std::fs::remove_dir_all(root).unwrap();
     }
