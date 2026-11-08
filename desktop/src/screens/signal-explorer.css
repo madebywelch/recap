@@ -64,9 +64,9 @@
 .signal-explorer .xsheet { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 15px; align-items: start; max-width: none; min-height: 0; padding: 0; background: none; box-shadow: none; }
 .signal-explorer .signal-selected { grid-column: 1; }
 .signal-explorer .dq { overflow-wrap: anywhere; font: 400 17px/1.55 var(--font-ui); color: var(--signal-ink); }
-.signal-explorer .signal-score { grid-column: 2; grid-row: 1; padding: 24px; border-radius: 16px; background: var(--signal-lavender); }
+.signal-explorer .signal-score { grid-column: 2; grid-row: 1; align-self: start; padding: 24px; border-radius: 16px; background: var(--signal-lavender); }
 .signal-explorer .signal-score > span:first-child { display: block; color: var(--signal-purple); text-transform: uppercase; letter-spacing: 1.4px; font-size: 10px; font-weight: 700; }
-.signal-explorer .signal-score strong { display: inline-block; margin-top: 14px; font-size: 44px; }
+.signal-explorer .signal-score strong { display: inline-block; margin: 14px 6px 0 0; font-size: 44px; }
 .signal-explorer .signal-score p { font-size: 12px; line-height: 1.5; }
 .signal-explorer .signal-ledger, .signal-explorer .signal-source { grid-column: 1 / -1; }
 .signal-explorer .signal-ledger h2 { margin: 0; font: 700 16px var(--font-ui); }
@@ -84,7 +84,7 @@
 .signal-explorer .meta, .signal-explorer .turn-who { color: var(--signal-muted); }
 .signal-explorer .meta dd { color: var(--signal-ink); }
 @media (max-width: 1200px) {
-  .split.signal-explorer { grid-template-columns: minmax(0, 1fr); padding: 24px; }
+  .split.signal-explorer { grid-template-columns: minmax(0, 1fr); padding: 35px 40px; }
   .signal-explorer .xlist { grid-column: 1; grid-row: 4; }
   .signal-explorer .xdetail { grid-column: 1; grid-row: 3; }
 }
@@ -92,6 +92,6 @@
   .signal-explorer .xsheet { grid-template-columns: minmax(0, 1fr); }
   .signal-explorer .signal-score { grid-column: 1; grid-row: auto; }
   .signal-explorer .signal-score { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  .signal-explorer .signal-score strong { margin-top: 0; font-size: 28px; }
+  .signal-explorer .signal-score strong { margin: 0; font-size: 28px; }
   .signal-explorer .signal-score p { flex-basis: 100%; margin: 0; }
 }

@@ -29,6 +29,7 @@
 }
 
 .concept-library .shelf-row {
+  gap: 8px;
   margin-top: 12px;
   padding: 20px 24px;
   border: 1px solid var(--rule);
@@ -54,9 +55,15 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 14px;
-  margin-top: 8px;
+  align-items: center;
   color: var(--ink-3);
   font: 400 12px/1.5 var(--font-ui);
+}
+
+.concept-library .shelf-meta .tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
 }
 
 .concept-reader-layout {
@@ -80,6 +87,7 @@
 
 .concept-reader-card .display {
   margin: 16px 0 24px;
+  font-size: 28px;
 }
 
 .concept-reader-card .reader-body {

@@ -139,8 +139,8 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
         <div className="studio-review-layout">
           <main className="studio-review-stage">
             <div className="kicker">Practice · {index + 1} / {queue.length}</div>
-            <div className="studio-review-progress" role="progressbar" aria-label="Review progress" aria-valuemin={0} aria-valuemax={queue.length} aria-valuenow={index}>
-              <span style={{ width: `${(index / queue.length) * 100}%` }} />
+            <div className="studio-review-progress" role="progressbar" aria-label="Review progress" aria-valuemin={0} aria-valuemax={queue.length} aria-valuenow={index + 1}>
+              <span style={{ width: `${((index + 1) / queue.length) * 100}%` }} />
             </div>
             <h2><Html md={current.title} /></h2>
             <p className="studio-review-prompt">Say what this is and how it works, out loud or in your head.</p>

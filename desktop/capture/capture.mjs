@@ -53,6 +53,13 @@ try {
       }
       if (state === 'reader-lower') await page.getByRole('button', { name: /Show the exchange/ }).click();
       if (state === 'review-revealed-lower') await page.getByRole('button', { name: /Show the exchange/ }).click();
+      if (state === 'settings-lower') await page.getByText('Augmented PATH', { exact: true }).click();
+      if (state === 'review-due') {
+        const progress = page.getByRole('progressbar', { name: 'Review progress' });
+        const value = await progress.getAttribute('aria-valuenow');
+        const width = await progress.locator('span').evaluate(element => element.style.width);
+        if (value !== '1' || Math.abs(parseFloat(width) - 100 / 3) > 0.01) throw new Error(`Unexpected review progress: ${value}, ${width}`);
+      }
       if (state === 'brief-expanded-lower') {
         await page.locator('.entry.open .source').first().scrollIntoViewIfNeeded();
       } else if (state === 'reader-lower') {
