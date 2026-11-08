@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { SourcesResult } from "../fixtures";
+import { toolLabel, type SourcesResult } from "../fixtures";
 import {
   detectInference,
   detectSources,
@@ -137,7 +137,7 @@ export default function SettingsScreen({ onSaved }: { onSaved: (settings: Settin
             {detection === null
               ? "Checking for writing tools…"
               : detection.cli
-                ? `The brief will be written by ${detection.cli} (${detection.path}).`
+                ? `Briefs are written by ${toolLabel(detection.cli)}.`
                 : "No writing tool found for this setting. Choose or install a tool to write briefs."}
             {sourcesError && ` ${sourcesError}`}
           </div>

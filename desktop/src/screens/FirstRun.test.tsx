@@ -19,7 +19,7 @@ it("explains where excerpts go and reports an unavailable check", () => {
 it("shows found sessions and the selected writing tool without technical details", () => {
   render(<FirstRun settings={settings} onDone={vi.fn()} detection={{ cli: "claude", path: "/private/bin/claude", considered: [], clis: [], login_shell: true, path_dirs: [] }} sources={{ engineVersion: "1.0.0", since: "2026-11-01", sources: [{ tool: "claude", root: "/private/sessions", found: true, sessions: 2, recentSessions: 1 }] }} />);
   expect(screen.getByText("2 sessions found")).toBeTruthy();
-  expect(screen.getByText(/claude will write your briefs/)).toBeTruthy();
+  expect(screen.getByText(/Claude Code will write your briefs/)).toBeTruthy();
   expect(screen.queryByText(/\/private/)).toBeNull();
 });
 

@@ -62,7 +62,7 @@ it("shows the first sentence and known source metadata on the shelf, then the fu
   expect(card.textContent).toContain("The first sentence is complete.");
   expect(card.textContent).not.toContain("The second sentence");
   expect(card.textContent).not.toContain("Conversation source");
-  expect(card.textContent).toContain("claude");
+  expect(card.textContent).toContain("Claude Code");
   expect(card.textContent).toContain("recap");
   fireEvent.click(card);
   expect(screen.getByText(/The second sentence belongs in the reader/).textContent).toContain("The final detail remains visible.");
@@ -73,14 +73,14 @@ it("omits source metadata when the referenced candidate is unavailable", async (
   render(<ConceptLibrary store={store} onNavigate={vi.fn()} />);
   const card = await screen.findByRole("button", { name: /A concept/ });
   expect(card.textContent).not.toContain("Conversation source");
-  expect(card.textContent).not.toContain("claude");
+  expect(card.textContent).not.toContain("Claude Code");
 });
 
 it("shows matched fixture source metadata without exposing the full explainer", () => {
   render(<ConceptLibrary store={{ ...store, source: "fixture", candidates: [{ ...source, id: "20a4768e4f88e03b" }] }} onNavigate={vi.fn()} />);
   const card = screen.getByText("SQLite locking modes and WAL").closest(".shelf-row")!;
   expect(card.textContent).not.toContain("Conversation source");
-  expect(card.textContent).toContain("claude");
+  expect(card.textContent).toContain("Claude Code");
   expect(card.textContent).toContain("recap");
   expect(card.textContent).not.toContain("rollback-journal");
 });

@@ -5,9 +5,14 @@ import {
   EnvelopeError,
   SUPPORTED_ENGINE_MAJOR,
   TOOLS,
+  toolLabel,
   validateScanResult,
   validateSourcesResult,
 } from "./fixtures";
+
+it("labels known tools and preserves unknown names", () => {
+  expect(["claude", "codex", "pi", "custom", "constructor"].map(toolLabel)).toEqual(["Claude Code", "Codex", "Pi", "custom", "constructor"]);
+});
 
 describe("validateScanResult", () => {
   it("accepts the committed engine fixture", () => {

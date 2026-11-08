@@ -24,6 +24,7 @@ it("shows session facts and preserves exchange disclosure without diagnostics", 
   const { container } = render(<DailyBrief store={{ ...store, since: "2026-11-02", tools: ["claude", "codex"] }} onNavigate={navigate} />);
   expect(screen.getByText("From your sessions")).toBeTruthy();
   expect(screen.getByText("From 1 session with Claude Code since Nov 1, 2026.")).toBeTruthy();
+  expect(screen.getByText(/You asked Claude Code/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /Read the explainer/ }));
   fireEvent.click(screen.getByRole("button", { name: /Show the exchange/ }));
   expect(screen.getByText("An answer")).toBeTruthy();
@@ -32,6 +33,17 @@ it("shows session facts and preserves exchange disclosure without diagnostics", 
   expect(screen.queryByText("An answer")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /I'm done/ }));
   expect(screen.getByText("That's today's brief.")).toBeTruthy();
+});
+
+it("offers one clear path to Settings when no writing tool is available", () => {
+  vi.mocked(useBrief).mockReturnValue({ ...base, status: "cta", detection: { cli: null, path: null, considered: [], clis: [], path_dirs: [], login_shell: false } });
+  const navigate = vi.fn();
+  render(<DailyBrief store={store} onNavigate={navigate} />);
+  expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  expect(screen.getByText(/Install Claude Code, Codex or Pi/)).toBeTruthy();
+  expect(screen.getByText(/From 1 session with Claude Code/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+  expect(navigate).toHaveBeenCalledWith("settings");
 });
 
 it("omits unavailable provenance instead of using the current scan", () => {

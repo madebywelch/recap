@@ -37,6 +37,10 @@ export const TOOL_LABELS: Record<Tool, string> = {
   pi: "Pi",
 };
 
+export function toolLabel(name: string): string {
+  return Object.prototype.hasOwnProperty.call(TOOL_LABELS, name) ? TOOL_LABELS[name as Tool] : name;
+}
+
 export interface Candidate {
   id: string;
   tool: Tool;

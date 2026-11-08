@@ -2,7 +2,7 @@ import { useState } from "react";
 import briefSource from "../../fixtures/daily-brief.md?raw";
 import Exchange from "../Exchange";
 import { Html } from "../md";
-import { brief } from "../fixtures";
+import { brief, toolLabel } from "../fixtures";
 import { localDate, parseEntries, project } from "../brief";
 import { dueText, firstSentence } from "../library-filters";
 import { useLibrary } from "../useLibrary";
@@ -28,7 +28,7 @@ function dayLabel(date: string): string {
 }
 
 function SourceMetadata({ candidates }: { candidates: Candidate[] }) {
-  const labels = [...new Set(candidates.flatMap((candidate) => [candidate.tool, ...(candidate.cwd ? [project(candidate)] : [])]))];
+  const labels = [...new Set(candidates.flatMap((candidate) => [toolLabel(candidate.tool), ...(candidate.cwd ? [project(candidate)] : [])]))];
   return labels.map((label) => <span key={label}>{label}</span>);
 }
 

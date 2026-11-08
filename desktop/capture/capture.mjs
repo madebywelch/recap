@@ -11,7 +11,7 @@ const states = {
   'brief-load-error': ['Daily Brief', "Couldn't load your brief."],
   'brief-generating': ['Daily Brief', "Running today's recap"],
   'brief-cta': ['Daily Brief', "Today's brief isn't written yet."],
-  'brief-no-cli': ['Daily Brief', 'A tool is needed to write your brief.'],
+  'brief-no-cli': ['Daily Brief', 'Choose a tool to write your brief.'],
   library: ['Concept Library', 'Everything you'],
   reader: ['Concept Library', 'Back to the library'],
   'reader-lower': ['Concept Library', 'Back to the library', 'reader'],

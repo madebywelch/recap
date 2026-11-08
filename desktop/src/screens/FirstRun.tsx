@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { TOOLS, TOOL_LABELS, type SourcesResult } from "../fixtures";
+import { TOOLS, toolLabel, type SourcesResult } from "../fixtures";
 import { setSettings, type Detection, type Settings } from "../generation";
 
 /**
@@ -76,7 +76,7 @@ export default function FirstRun({
                 const source = sources?.sources.find((item) => item.tool === tool);
                 return (
                   <li key={tool} className="harness">
-                    <div className="harness-name">{TOOL_LABELS[tool]}</div>
+                    <div className="harness-name">{toolLabel(tool)}</div>
                     <div className="harness-line">
                       {!source ? "Couldn't check for conversations" : source.found ? `${source.sessions} ${source.sessions === 1 ? "session" : "sessions"} found` : "No conversations found"}
                     </div>
@@ -86,7 +86,7 @@ export default function FirstRun({
             </ul>
             {detection?.cli ? (
               <p>
-                {detection.cli} will write your briefs. You can choose another tool in
+                {toolLabel(detection.cli)} will write your briefs. You can choose another tool in
                 Settings.
               </p>
             ) : detection ? (

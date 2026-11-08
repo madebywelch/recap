@@ -12,7 +12,7 @@ import {
   userSignals,
   type ExplorerFilters,
 } from "../explorer-filters";
-import { TOOLS, TOOL_LABELS, type Candidate, type Signal } from "../fixtures";
+import { TOOLS, toolLabel, type Candidate, type Signal } from "../fixtures";
 import { count, parseEntries, project, signed } from "../brief";
 import "./signal-explorer.css";
 
@@ -80,7 +80,7 @@ function Filters({
               aria-pressed={filters.tool === t}
               onClick={() => onChange({ ...filters, tool: t })}
             >
-              {t === "all" ? "All" : TOOL_LABELS[t]}
+              {t === "all" ? "All" : toolLabel(t)}
             </button>
           ))}
         </div>
@@ -195,7 +195,7 @@ function Detail({ c, inBrief, onNavigate }: { c: Candidate; inBrief: Set<string>
       </div>
       <p className="dq">“{oneLine(c.userMessage)}”</p>
       <div className="who">
-        {c.tool} · {project(c)} · {shortTs(c.ts)}
+        {toolLabel(c.tool)} · {project(c)} · {shortTs(c.ts)}
         {inBrief.has(c.id) && (
           <>
             {" · "}
@@ -218,13 +218,13 @@ function Detail({ c, inBrief, onNavigate }: { c: Candidate; inBrief: Set<string>
             <pre>{c.userMessage}</pre>
           </div>
           <div className="turn">
-            <div className="turn-who">{c.tool}</div>
+            <div className="turn-who">{toolLabel(c.tool)}</div>
             <pre>{c.assistantExcerpt}</pre>
           </div>
         </div>
         <dl className="meta">
           <dt>Tool</dt>
-          <dd>{c.tool}</dd>
+          <dd>{toolLabel(c.tool)}</dd>
           <dt>Session</dt>
           <dd>{c.sessionId}</dd>
           <dt>Working dir</dt>
@@ -336,7 +336,7 @@ export default function SignalExplorer({
               <span>
                 <span className="u">{oneLine(c.userMessage)}</span>
                 <span className="m">
-                  {c.tool} · {project(c)} · {shortTs(c.ts)}
+                  {toolLabel(c.tool)} · {project(c)} · {shortTs(c.ts)}
                   {inBrief.has(c.id) && <span className="tag">in brief</span>}
                 </span>
               </span>

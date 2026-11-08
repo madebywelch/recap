@@ -1,4 +1,4 @@
-import { TOOLS, TOOL_LABELS, type SourcesResult } from "../fixtures";
+import { TOOLS, toolLabel, type SourcesResult } from "../fixtures";
 import type { Detection } from "../generation";
 
 /**
@@ -26,7 +26,7 @@ export default function Harnesses({
         return (
           <li key={tool} className={writes ? "harness writes" : "harness"}>
             <div className="harness-name">
-              {TOOL_LABELS[tool]}
+              {toolLabel(tool)}
               {writes && <span className="harness-badge">writes the brief</span>}
             </div>
             <div className="harness-line">
@@ -52,7 +52,7 @@ export default function Harnesses({
                 <span className="harness-missing">checking…</span>
               ) : !cli.path ? (
                 <span className="harness-missing">
-                  <code>{tool}</code> wasn't found
+                  {toolLabel(tool)} wasn't found
                 </span>
               ) : cli.runs ? (
                 <span>

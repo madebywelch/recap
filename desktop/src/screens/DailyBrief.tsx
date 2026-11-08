@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Exchange from "../Exchange";
 import { Html } from "../md";
-import { TOOL_LABELS, type Candidate, type Tool } from "../fixtures";
+import { toolLabel, type Candidate } from "../fixtures";
 import {
   clock,
   count,
@@ -46,7 +46,7 @@ function Entry({
             <p className={lead.kind === "error" ? "entry-lead error" : "entry-lead"}>{lead.text}</p>
             <div className="entry-who">
               {lead.kind === "error" ? "You pasted this into " : "You asked "}
-              {primary.tool} <span className="entry-time">· {clock(primary.ts)}</span> · {project(primary)}
+              {toolLabel(primary.tool)} <span className="entry-time">· {clock(primary.ts)}</span> · {project(primary)}
             </div>
           </>
         )}
@@ -100,7 +100,7 @@ function Entry({
 }
 
 function Facts({ since, tools, sessions }: { since: string | null; tools: string | null; sessions: number | null }) {
-  const names = (tools ?? "").split(/\s*[+,]\s*/).filter(Boolean).map((tool) => TOOL_LABELS[tool as Tool] ?? tool);
+  const names = (tools ?? "").split(/\s*[+,]\s*/).filter(Boolean).map(toolLabel);
   const date = since ? new Date(since + "T00:00") : null;
   const dateText = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : null;
   const available = sessions !== null || names.length > 0 || dateText;
@@ -181,7 +181,7 @@ function Generating({
       ? "Running today's recap…"
       : phase.event === "scan_done"
         ? "Sessions scanned — choosing what to include…"
-        : `Writing with ${phase.cli ?? "your selected tool"}…`;
+        : `Writing with ${phase.cli ? toolLabel(phase.cli) : "your selected tool"}…`;
   return (
     <div className="sheet gen-sheet">
       <div className="kicker">Daily brief · generation</div>
@@ -298,16 +298,11 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
       <div className="folio-scroll">
         <div className="sheet gen-sheet">
           <div className="kicker">Daily brief · {new Date().toLocaleDateString([], { weekday: "long" })}</div>
-          <h1 className="display">Today's brief isn't written yet.</h1>
-          <p className="dek">
-            Your sessions are ready to turn into a brief. Writing it may take a few minutes.
-          </p>
+          <h1 className="display">{noCli ? "Choose a tool to write your brief." : "Today's brief isn't written yet."}</h1>
+          <p className="dek">{noCli ? "Install Claude Code, Codex or Pi, or choose a custom tool in Settings." : "Your sessions are ready to turn into a brief. Writing it may take a few minutes."}</p>
           <Facts since={store.since} tools={store.tools.join("+")} sessions={store.sessions} />
           {noCli ? (
-            <>
-              <h1 className="display cta-block">A tool is needed to write your brief.</h1>
-              <p className="dek">Install Claude Code, Codex or Pi, or choose a custom tool in Settings.</p>
-            </>
+            <button className="button primary" onClick={() => onNavigate("settings")}>Open Settings</button>
           ) : (
             <div className="closing">
               <button className="button primary" onClick={generate}>
