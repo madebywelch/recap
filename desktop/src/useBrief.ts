@@ -30,9 +30,9 @@ export interface BriefView {
   /** The brief's local date, YYYY-MM-DD, for the masthead. */
   date: string;
   /** Run facts for the strip: the scan's counts plus how the brief was made. */
-  since: string;
-  tools: string;
-  sessions: number;
+  since: string | null;
+  tools: string | null;
+  sessions: number | null;
   pairs: number;
   candidateCount: number;
   inferenceCli: string | null;
@@ -54,9 +54,9 @@ function runToView(run: BriefRecord, store: StoreState): BriefView {
   return {
     entries: parseEntries(run.raw_output),
     date: run.started_at ? localDate(new Date(run.started_at)) : store.since,
-    since: run.since,
-    tools: store.tools.join(" + "),
-    sessions: store.sessions,
+    since: run.tools === "unknown" && run.sessions === null ? null : run.since,
+    tools: run.tools === "unknown" ? null : run.tools,
+    sessions: run.sessions,
     pairs: store.pairs,
     candidateCount: store.windowCandidates,
     inferenceCli: run.inference_cli,
@@ -70,8 +70,8 @@ function fixtureView(store: StoreState): BriefView {
     entries: parseEntries(fixtureBriefSource),
     date: fixtureBrief.meta.generatedAt.slice(0, 10),
     since: fixtureBrief.meta.since,
-    tools: fixtureBrief.meta.tools.replace("+", " + "),
-    sessions: store.sessions,
+    tools: fixtureBrief.meta.tools,
+    sessions: fixtureBrief.meta.sessions,
     pairs: store.pairs,
     candidateCount: store.windowCandidates,
     inferenceCli: fixtureBrief.meta.inference,

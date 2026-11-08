@@ -1,14 +1,13 @@
 import { useState } from "react";
 import Exchange from "../Exchange";
 import { Html } from "../md";
-import { type Candidate } from "../fixtures";
+import { toolLabel, type Candidate } from "../fixtures";
 import {
   clock,
   count,
   leadOf,
   project,
   readMinutes,
-  signed,
   type BriefEntry,
 } from "../brief";
 import { useBrief, type BriefView } from "../useBrief";
@@ -27,14 +26,12 @@ function Entry({
   level,
   byId,
   onLevel,
-  onNavigate,
 }: {
   entry: BriefEntry;
   index: number;
   level: Level;
   byId: Map<string, Candidate>;
   onLevel: (l: Level) => void;
-  onNavigate: Navigate;
 }) {
   const sources = entry.sources.map((id) => byId.get(id)).filter((c): c is Candidate => !!c);
   const [primary, ...others] = sources;
@@ -49,7 +46,7 @@ function Entry({
             <p className={lead.kind === "error" ? "entry-lead error" : "entry-lead"}>{lead.text}</p>
             <div className="entry-who">
               {lead.kind === "error" ? "You pasted this into " : "You asked "}
-              {primary.tool} <span className="entry-time">· {clock(primary.ts)}</span> · {project(primary)}
+              {toolLabel(primary.tool)} <span className="entry-time">· {clock(primary.ts)}</span> · {project(primary)}
             </div>
           </>
         )}
@@ -89,25 +86,12 @@ function Entry({
           <section className="source">
             <h4 className="label">The exchange that started it</h4>
             <Exchange c={primary} />
-            <div className="why">
-              <span>
-                Why it surfaced · <b>score {primary.score}</b>
-              </span>
-              {primary.signals.map((s) => (
-                <span key={s.name} className={"signal" + (s.side === "user" ? " user" : "") + (s.weight < 0 ? " neg" : "")}>
-                  {s.name} {signed(s.weight)}
-                </span>
-              ))}
-            </div>
             {others.length > 0 && (
               <p className="also">
                 Also drawn from {others.length === 1 ? "1 more exchange" : `${others.length} more exchanges`}:{" "}
                 {others.map((o) => `“${leadOf(o).text}”`).join(", ")}
               </p>
             )}
-            <button className="link" onClick={() => onNavigate("signals", primary.id)}>
-              Open in Signal Explorer →
-            </button>
           </section>
         )}
       </div>
@@ -115,29 +99,14 @@ function Entry({
   );
 }
 
-function Facts({ view }: { view: BriefView }) {
-  const since = new Date(view.since + "T00:00");
+function Facts({ since, tools, sessions }: { since: string | null; tools: string | null; sessions: number | null }) {
+  const names = (tools ?? "").split(/\s*[+,]\s*/).filter(Boolean).map(toolLabel);
+  const date = since ? new Date(since + "T00:00") : null;
+  const dateText = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : null;
+  const available = sessions !== null || names.length > 0 || dateText;
   return (
     <div className="facts">
-      <span>
-        Window <b>since {since.toLocaleDateString([], { month: "short", day: "numeric" })}</b>
-      </span>
-      <span>
-        <b>{view.tools}</b>
-      </span>
-      <span>
-        <b>{view.sessions}</b> sessions
-      </span>
-      <span>
-        <b>{view.pairs}</b> pairs
-      </span>
-      <span>
-        <b>{view.candidateCount}</b> candidates
-      </span>
-      <span>
-        written by <b>{view.inferenceCli ?? "recap"}</b>
-        {view.generatedAt ? ` at ${view.generatedAt}` : ""}
-      </span>
+      <span>{available ? `From ${sessions === null ? "sessions" : `${sessions} ${sessions === 1 ? "session" : "sessions"}`}${names.length ? ` with ${new Intl.ListFormat(undefined, { style: "long", type: "conjunction" }).format(names)}` : ""}${dateText ? ` since ${dateText}` : ""}.` : "Session details aren't available."}</span>
     </div>
   );
 }
@@ -211,8 +180,8 @@ function Generating({
     phase === null
       ? "Running today's recap…"
       : phase.event === "scan_done"
-        ? `Scanned ${phase.sessions ?? "?"} sessions — picking what to learn from ${phase.candidates ?? "?"} candidates…`
-        : `Writing with ${phase.cli ?? "the inference CLI"}…`;
+        ? "Sessions scanned — choosing what to include…"
+        : `Writing with ${phase.cli ? toolLabel(phase.cli) : "your selected tool"}…`;
   return (
     <div className="sheet gen-sheet">
       <div className="kicker">Daily brief · generation</div>
@@ -222,14 +191,12 @@ function Generating({
       </div>
       <div className="gen-elapsed">
         <b>{clock}</b> elapsed
-        {phase?.timeout_s ? ` · timeout ${phase.timeout_s}s` : ""}
       </div>
       <button className="button" onClick={onCancel}>
         Cancel
       </button>
       <p className="quiet-note">
-        The engine is reading the scanned window and asking the inference CLI to
-        write it up. Cancelling stops the whole process tree.
+        Your brief is being prepared from your sessions. You can cancel at any time.
       </p>
     </div>
   );
@@ -237,28 +204,26 @@ function Generating({
 
 /** The spec's error-state table, one card per row. */
 function ErrorCard({ error, loadError, onRetry, onDismiss }: { error: GenerationError; loadError: boolean; onRetry: () => void; onDismiss: () => void }) {
-  const [open, setOpen] = useState(false);
+  const title = loadError
+    ? "Couldn't load your brief."
+    : error.kind === "no-cli"
+      ? "A tool is needed to write your brief."
+      : error.kind === "timeout"
+        ? "Writing your brief took too long."
+        : "Couldn't write your brief.";
   const recourse =
     loadError
       ? "Try loading the brief again."
       : error.kind === "no-cli"
-      ? "Install a CLI, or set a custom path in Settings."
+      ? "Install a writing tool, or choose a custom tool in Settings."
       : error.kind === "timeout"
         ? "Raise the timeout in Settings and retry."
-        : "Retry, or widen the window and rescan.";
+        : "Try again, or check your settings.";
   return (
     <div className="sheet gen-sheet">
       <div className="kicker">Daily brief · {loadError ? "loading" : "generation"}</div>
-      <h1 className="display">{error.title}</h1>
+      <h1 className="display">{title}</h1>
       <p className="dek">{recourse}</p>
-      {error.detail && (
-        <>
-          <button className="text-button" onClick={() => setOpen(!open)}>
-            {open ? "Hide the raw output ↑" : "Show the raw output ↓"}
-          </button>
-          {open && <pre className="error-detail">{error.detail}</pre>}
-        </>
-      )}
       <div className="closing">
         <button className="button primary" onClick={onRetry}>
           Retry
@@ -317,12 +282,10 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
           <div className="kicker">Daily brief</div>
           <h1 className="display">Nothing to recap.</h1>
           <p className="dek">
-            Nothing in the last day's sessions — your recap would be empty. That's
-            correct behavior, not a bug.
+            There's nothing to recap from this period yet.
           </p>
           <p className="quiet-note">
-            Widen the window (for example three days) and scan again from the
-            Signal Explorer.
+            Try again after you've spent more time working with your tools.
           </p>
         </div>
       </div>
@@ -335,31 +298,11 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
       <div className="folio-scroll">
         <div className="sheet gen-sheet">
           <div className="kicker">Daily brief · {new Date().toLocaleDateString([], { weekday: "long" })}</div>
-          <h1 className="display">Today's brief isn't written yet.</h1>
-          <p className="dek">
-            {count(store.windowCandidates, "candidate", true)} from the last day's
-            sessions are ready to learn from. Writing the brief takes a few
-            minutes of the inference CLI's time.
-          </p>
-          <Facts
-            view={{
-              date: "",
-              entries: [],
-              since: store.since,
-              tools: store.tools.join(" + "),
-              sessions: store.sessions,
-              pairs: store.pairs,
-              candidateCount: store.windowCandidates,
-              inferenceCli: null,
-              generatedAt: null,
-              candidatesById: new Map(),
-            }}
-          />
+          <h1 className="display">{noCli ? "Choose a tool to write your brief." : "Today's brief isn't written yet."}</h1>
+          <p className="dek">{noCli ? "Install Claude Code, Codex or Pi, or choose a custom tool in Settings." : "Your sessions are ready to turn into a brief. Writing it may take a few minutes."}</p>
+          <Facts since={store.since} tools={store.tools.join("+")} sessions={store.sessions} />
           {noCli ? (
-            <>
-              <h1 className="display cta-block">Generation needs the claude, codex or pi CLI.</h1>
-              <p className="dek">Scanning and the Signal Explorer still work. Install a CLI, or set a custom path in Settings.</p>
-            </>
+            <button className="button primary" onClick={() => onNavigate("settings")}>Open Settings</button>
           ) : (
             <div className="closing">
               <button className="button primary" onClick={generate}>
@@ -377,7 +320,6 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
   }
 
   const entries = view.entries;
-  const belowCut = Math.max(0, view.candidateCount - new Set(entries.flatMap((e) => e.sources)).size);
 
   if (done) {
     return (
@@ -394,7 +336,7 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
         <div className="kicker">{new Date(view.date + "T00:00").toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })} · Your daily brief</div>
         <h1 className="display">Follow your curiosity.</h1>
         <p className="dek">
-          {count(entries.length, "idea", true)} from the last day's sessions, ranked by how much they looked like learning. About{" "}
+          {count(entries.length, "idea", true)} from your sessions. About{" "}
           {count(readMinutes(entries), "minute")}, then you're done.
         </p>
         </div>
@@ -413,7 +355,6 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
             index={i}
             level={levels[i] ?? 0}
             byId={view.candidatesById}
-            onNavigate={onNavigate}
             onLevel={(l) =>
               setLevels((prev) => {
                 const next = [...prev];
@@ -426,21 +367,13 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
         ))}
 
         <div className="brief-end">
-          {belowCut > 0 && (
-            <p className="quiet-note">
-              {count(belowCut, "more candidate", true)} from today scored below the cut.{" "}
-              <button className="link" onClick={() => onNavigate("signals")}>
-                More from today in the Explorer →
-              </button>
-            </p>
-          )}
           <button className="button primary" onClick={() => setDone(true)}>
             I'm done for today
           </button>
         </div>
         </div><aside className="brief-aside">
           <div className="practice-card"><div className="kicker">Your next small step</div><h2>Remember the idea, not just the answer.</h2><p>Try a short recall question when you're ready.</p><button className="button primary" onClick={() => onNavigate("review")}>Start practice →</button></div>
-          <div className="brief-facts-card"><div className="kicker">Behind this brief</div><Facts view={view} /></div>
+          <div className="brief-facts-card"><div className="kicker">From your sessions</div><Facts since={view.since} tools={view.tools} sessions={view.sessions} /></div>
         </aside></div>
       </div>
     </div>

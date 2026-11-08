@@ -2,8 +2,8 @@ import { useState } from "react";
 import briefSource from "../../fixtures/daily-brief.md?raw";
 import Exchange from "../Exchange";
 import { Html } from "../md";
-import { brief } from "../fixtures";
-import { localDate, parseEntries, project, signed } from "../brief";
+import { brief, toolLabel } from "../fixtures";
+import { localDate, parseEntries, project } from "../brief";
 import { dueText, firstSentence } from "../library-filters";
 import { useLibrary } from "../useLibrary";
 import type { Concept, StoreState } from "../store";
@@ -28,7 +28,7 @@ function dayLabel(date: string): string {
 }
 
 function SourceMetadata({ candidates }: { candidates: Candidate[] }) {
-  const labels = [...new Set(candidates.flatMap((candidate) => [candidate.tool, ...(candidate.cwd ? [project(candidate)] : [])]))];
+  const labels = [...new Set(candidates.flatMap((candidate) => [toolLabel(candidate.tool), ...(candidate.cwd ? [project(candidate)] : [])]))];
   return labels.map((label) => <span key={label}>{label}</span>);
 }
 
@@ -37,8 +37,6 @@ function SourceMetadata({ candidates }: { candidates: Candidate[] }) {
 function Reader({
   concept,
   sources,
-  inWindow,
-  onNavigate,
   onBack,
   onAdd,
   onRemove,
@@ -49,8 +47,6 @@ function Reader({
 }: {
   concept: Concept;
   sources: Candidate[] | null;
-  inWindow: (id: string) => boolean;
-  onNavigate: Navigate;
   onBack: () => void;
   onAdd: (c: Concept) => void;
   onRemove: (c: Concept) => void;
@@ -111,14 +107,14 @@ function Reader({
         <div className="kicker">From your conversations</div>
         {concept.sourceIds === null ? (
           <p className="quiet-note">
-            This concept came from a pre-app archive — the exchange behind it wasn't recorded.
+            The conversation behind this concept wasn't saved.
           </p>
         ) : sourceError ? (
           <p className="quiet-note" role="alert">{sourceError} <button className="link" onClick={onRetrySources}>Try again</button></p>
         ) : sources === null ? (
           <p className="quiet-note">Reading the archive…</p>
         ) : sources.length === 0 ? (
-          <p className="quiet-note">The exchanges behind this concept are no longer in the store.</p>
+          <p className="quiet-note">The conversations behind this concept are no longer available.</p>
         ) : (
           <>
             <button className="disclose" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -129,26 +125,6 @@ function Reader({
               {sources.map((source) => <section className="source" key={source.id}>
                 <h4 className="label">The exchange that started it</h4>
                 <Exchange c={source} />
-                <div className="why">
-                  <span>
-                    Why it surfaced · <b>score {source.score}</b>
-                  </span>
-                  {source.signals.map((s) => (
-                    <span
-                      key={s.name}
-                      className={"signal" + (s.side === "user" ? " user" : "") + (s.weight < 0 ? " neg" : "")}
-                    >
-                      {s.name} {signed(s.weight)}
-                    </span>
-                  ))}
-                </div>
-                {inWindow(source.id) ? (
-                  <button className="link" onClick={() => onNavigate("signals", source.id)}>
-                    Open in Signal Explorer →
-                  </button>
-                ) : (
-                  <p className="quiet-note">From an earlier scan window — rescan that day to open it in the Explorer.</p>
-                )}
               </section>)}
               </div>
             )}
@@ -178,7 +154,7 @@ function FixtureShelf({ store }: { store: StoreState }) {
         <div className="shelf">
           <div className="shelf-head">
             <span className="label">{date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</span>
-            <span className="shelf-note">fixture data — the library lives in the app</span>
+            <span className="shelf-note">Example concepts</span>
           </div>
           {entries.map((e) => (
             <div key={e.title} className="shelf-row">
@@ -200,8 +176,8 @@ function FixtureShelf({ store }: { store: StoreState }) {
   );
 }
 
-export default function ConceptLibrary({ store, onNavigate }: { store: StoreState | null; onNavigate: Navigate }) {
-  const { concepts, query, setQuery, groups, selected, sources, loading, loadError, sourceError, reviewError, reviewPending, retry, retrySources, open, close, addReview, removeReview, inWindow } =
+export default function ConceptLibrary({ store }: { store: StoreState | null; onNavigate: Navigate }) {
+  const { concepts, query, setQuery, groups, selected, sources, loading, loadError, sourceError, reviewError, reviewPending, retry, retrySources, open, close, addReview, removeReview } =
     useLibrary(store);
 
   if (store?.source === "fixture") return <FixtureShelf store={store} />;
@@ -211,8 +187,6 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
       <Reader
         concept={selected}
         sources={sources}
-        inWindow={inWindow}
-        onNavigate={onNavigate}
         onBack={close}
         onAdd={addReview}
         onRemove={removeReview}
@@ -268,7 +242,7 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
         {groups.length === 0 && (
           <p className="quiet-note">
             {query.trim() ? "No concepts match this search. Try a different search." :
-              "Nothing here yet. Write a brief, or drop recap-*.md archives into ~/.claude/morning-recap and relaunch — they're imported on open."}
+              "Nothing here yet. Create a brief to start your library."}
           </p>
         )}
 

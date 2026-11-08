@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { SourcesResult } from "../fixtures";
+import { toolLabel, type SourcesResult } from "../fixtures";
 import {
   detectInference,
   detectSources,
@@ -17,7 +17,7 @@ import Harnesses from "./Harnesses";
  * has per harness — transcripts and CLI — so "no CLI installed" is never
  * a surprise mid-generation.
  */
-export default function SettingsScreen() {
+export default function SettingsScreen({ onSaved }: { onSaved: (settings: Settings) => void }) {
   const [settings, setSettingsState] = useState<Settings | null>(null);
   const [detection, setDetection] = useState<Detection | null>(null);
   const [sources, setSources] = useState<SourcesResult | null>(null);
@@ -34,11 +34,11 @@ export default function SettingsScreen() {
         setDetection(found);
       })
       .catch(() => {
-        if (alive) setError("Settings live in the app shell — run the app, not the browser build.");
+        if (alive) setError("Couldn't load settings. Close and reopen recap, then try again.");
       });
     detectSources()
       .then((found) => alive && setSources(found))
-      .catch((e) => alive && setSourcesError(e instanceof Error ? e.message : String(e)));
+      .catch(() => alive && setSourcesError("Transcript check failed. Try again later."));
     return () => {
       alive = false;
     };
@@ -64,10 +64,16 @@ export default function SettingsScreen() {
     setError(null);
     try {
       await setSettings(settings);
-      setDetection(await detectInference());
+      onSaved(settings);
       setNote("Saved.");
+      setDetection(await detectInference().catch(() => null));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message === "a custom CLI needs a path"
+        ? "Enter a path to your writing tool."
+        : message === "timeout must be between 60 and 900 seconds"
+          ? "Choose a time limit between 60 and 900 seconds."
+          : "Couldn't save settings. Please try again.");
     }
   };
 
@@ -76,13 +82,13 @@ export default function SettingsScreen() {
       <div className="sheet settings-sheet">
         <header>
           <h1 className="display">Settings</h1>
-          <p className="dek">Configure generation and see what recap found on this machine.</p>
+          <p className="dek">Choose how to write briefs and see what recap found on this machine.</p>
         </header>
 
         <section className="settings-group">
-          <h2 className="settings-section-title">Generation</h2>
+          <h2 className="settings-section-title">Writing briefs</h2>
           <div className="settings-card settings-generation">
-          <label className="label" htmlFor="inference-cli">Inference CLI</label>
+          <label className="label" htmlFor="inference-cli">Writing tool</label>
           <div className="settings-row">
             <select
               id="inference-cli"
@@ -91,16 +97,16 @@ export default function SettingsScreen() {
                 update({ inference_cli: e.target.value as Settings["inference_cli"] })
               }
             >
-              <option value="auto">auto — the first installed of claude, codex, pi</option>
-              <option value="claude">claude</option>
-              <option value="codex">codex</option>
-              <option value="pi">pi</option>
-              <option value="custom">custom path</option>
+              <option value="auto">Automatic — first available tool</option>
+              <option value="claude">Claude Code</option>
+              <option value="codex">Codex</option>
+              <option value="pi">Pi</option>
+              <option value="custom">Custom tool</option>
             </select>
             {settings.inference_cli === "custom" && (
               <input
                 type="text"
-                aria-label="Custom inference CLI path"
+                aria-label="Custom writing tool path"
                 placeholder="/opt/tools/claude"
                 value={settings.custom_cli_path}
                 onChange={(e) => update({ custom_cli_path: e.target.value })}
@@ -109,11 +115,11 @@ export default function SettingsScreen() {
           </div>
           <div className="settings-hint">
             {settings.inference_cli === "custom"
-              ? "The custom path is passed to the engine as --inference and run claude-style (-p)."
-              : "Passed to the engine as --inference."}
+              ? "The custom tool must accept input like Claude Code."
+              : "Choose which tool writes briefs."}
           </div>
           <div className="settings-field">
-            <label className="label" htmlFor="generation-timeout">Generation timeout</label>
+            <label className="label" htmlFor="generation-timeout">Time limit</label>
             <div className="settings-row">
               <input id="generation-timeout" type="number" min={60} max={900} step={30}
                 value={settings.timeout_sec}
@@ -129,29 +135,37 @@ export default function SettingsScreen() {
           <Harnesses detection={detection} sources={sources} sourcesError={sourcesError} />
           <div className="settings-hint">
             {detection === null
-              ? "Checking the app's PATH…"
+              ? "Checking for writing tools…"
               : detection.cli
-                ? `The brief will be written by ${detection.cli} (${detection.path}).`
-                : `No CLI for this setting on the app's PATH (checked ${detection.considered.join(", ")}). Generation will say so when it runs; scanning and the Signal Explorer still work.`}
-            {sourcesError && ` Transcript check failed: ${sourcesError}`}
+                ? `Briefs are written by ${toolLabel(detection.cli)}.`
+                : "No writing tool found for this setting. Choose or install a tool to write briefs."}
+            {sourcesError && ` ${sourcesError}`}
           </div>
         </section>
 
         <section className="settings-group">
-          <h2 className="settings-section-title">Environment</h2>
+          <h2 className="settings-section-title">Tool locations</h2>
           <details className="settings-card settings-path">
-          <summary>Augmented PATH</summary>
+          <summary>Where recap looks for tools</summary>
           <p className="settings-hint">
-            GUI-launched apps see a minimal PATH, so the app asks your login shell
-            for its PATH{detection && !detection.login_shell ? " (it didn't answer this time)" : ""},
-            adds the common install locations, and puts both in front of the
-            inherited PATH before spawning the engine — that's where it looks for
-            the inference CLI.
+            Recap checks your usual tool locations and the locations provided by your system
+            {detection && !detection.login_shell ? ", though it couldn't read your shell's locations this time" : ""}.
           </p>
           {detection && (
-            <pre className="path-dirs">{detection.path_dirs.join("\n")}{"\n…then the inherited PATH"}</pre>
+            <pre className="path-dirs">{detection.path_dirs.join("\n")}{"\n…then your system locations"}</pre>
           )}
           </details>
+        </section>
+
+        <section className="settings-group">
+          <h2 className="settings-section-title">Advanced</h2>
+          <div className="settings-card">
+            <label>
+              <input type="checkbox" checked={settings.show_engine_details}
+                onChange={(e) => update({ show_engine_details: e.target.checked })} />{" "}
+              Show engine details
+            </label>
+          </div>
         </section>
 
         {error && <p className="settings-error">{error}</p>}

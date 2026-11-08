@@ -22,7 +22,7 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
       <div className="folio-scroll">
         <div className="sheet review-sheet studio-review-state">
           <div className="kicker">Make it stick · Review</div>
-          <p className="dek">Review needs the app's store — outside the shell there is nothing to grade.</p>
+          <p className="dek">Open the app to review your concepts.</p>
         </div>
       </div>
     );
@@ -159,7 +159,7 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
               </p>
             </div>
             {current.sourceIds === null ? (
-              <p className="quiet-note">This concept came from a pre-app archive — the exchange behind it wasn't recorded.</p>
+              <p className="quiet-note">The conversation behind this concept wasn't saved.</p>
             ) : (
               <button className="disclose" aria-expanded={expanded} onClick={() => expand()}>
                 {expanded ? "Hide the exchange ↑" : "Show the exchange ↓"}
@@ -174,13 +174,6 @@ export default function Review({ store, onNavigate }: { store: StoreState | null
                 {sources.map((source) => (
                   <div key={source.id} className="studio-review-source">
                     <Exchange c={source} />
-                    {store?.candidates.some((candidate) => candidate.id === source.id) ? (
-                      <button className="link" onClick={() => onNavigate("signals", source.id)}>
-                        See in Signal Explorer →
-                      </button>
-                    ) : (
-                      <p className="quiet-note">From an earlier scan window — rescan that day to open it in the Explorer.</p>
-                    )}
                   </div>
                 ))}
               </section>

@@ -52,7 +52,7 @@
 .studio-review-panel h2 { margin: 14px 0; font: 700 20px/1.25 var(--font-ui); letter-spacing: -.03em; }
 .studio-review-panel > p { font-size: 13px; }
 .studio-review-panel ol { list-style: none; padding: 0; margin: 18px 0 0; }
-.studio-review-panel li { display: flex; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+.studio-review-panel li { display: flex; align-items: baseline; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
 .studio-review-panel li > span:first-child { flex: none; color: var(--accent); font-weight: 700; }
 .studio-review-panel li[aria-current] { font-weight: 700; }
 .studio-review-tip { background: #dbf5e9; }

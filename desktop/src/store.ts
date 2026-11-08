@@ -47,6 +47,8 @@ export interface StoreState {
 export interface BriefRecord {
   id: number;
   since: string;
+  tools: string | null;
+  sessions: number | null;
   started_at: string;
   finished_at: string | null;
   inference_cli: string | null;
@@ -364,9 +366,9 @@ export async function initStore(): Promise<StoreState> {
 export async function loadBriefRun(since: string): Promise<BriefRecord | null> {
   if (!db) return null;
   const rows = await db.select<
-    { id: number; since: string; started_at: string; finished_at: string | null; inference_cli: string | null; raw_output: string }[]
+    BriefRecord[]
   >(
-    `SELECT id, since, started_at, finished_at, inference_cli, raw_output
+    `SELECT id, since, tools, sessions, started_at, finished_at, inference_cli, raw_output
      FROM runs WHERE raw_output IS NOT NULL AND since = $1
      ORDER BY id DESC LIMIT 1`,
     [since],
