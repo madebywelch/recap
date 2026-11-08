@@ -3,7 +3,7 @@ import briefSource from "../../fixtures/daily-brief.md?raw";
 import Exchange from "../Exchange";
 import { Html } from "../md";
 import { brief } from "../fixtures";
-import { localDate, parseEntries, signed } from "../brief";
+import { localDate, parseEntries, project, signed } from "../brief";
 import { dueText, firstSentence } from "../library-filters";
 import { useLibrary } from "../useLibrary";
 import type { Concept, StoreState } from "../store";
@@ -25,6 +25,11 @@ function dayLabel(date: string): string {
     month: "long",
     day: "numeric",
   });
+}
+
+function SourceMetadata({ candidates }: { candidates: Candidate[] }) {
+  const labels = [...new Set(candidates.flatMap((candidate) => [candidate.tool, ...(candidate.cwd ? [project(candidate)] : [])]))];
+  return labels.map((label) => <span key={label}>{label}</span>);
 }
 
 /** The reader for one concept: full explainer at reading measure, the
@@ -71,6 +76,7 @@ function Reader({
           <Html md={concept.body} />
         </p>
         </article>
+        <aside className="concept-reader-aside">
         <section className="concept-review-card">
         <div className="kicker">Review</div>
         <p className="reader-meta">
@@ -99,6 +105,7 @@ function Reader({
         {reviewPending && <p className="quiet-note" role="status">Updating review…</p>}
         {reviewError && <p className="quiet-note" role="alert">{reviewError}</p>}
         </section>
+        </aside>
 
         <section className="concept-source-card">
         <div className="kicker">From your conversations</div>
@@ -183,8 +190,7 @@ function FixtureShelf({ store }: { store: StoreState }) {
               </span>
               <span className="shelf-meta">
                 <span>{date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</span>
-                {store.candidates.some((candidate) => e.sources.includes(candidate.id)) && <span>Conversation source</span>}
-                {[...new Set(store.candidates.filter((candidate) => e.sources.includes(candidate.id)).map((candidate) => candidate.tool))].map((tool) => <span key={tool}>{tool}</span>)}
+                <SourceMetadata candidates={store.candidates.filter((candidate) => e.sources.includes(candidate.id))} />
               </span>
             </div>
           ))}
@@ -293,12 +299,9 @@ export default function ConceptLibrary({ store, onNavigate }: { store: StoreStat
                 </span>
                 <span className="shelf-meta">
                   <span>{dayLabel(c.date)}</span>
-                  {store.candidates.some((candidate) => c.sourceIds?.includes(candidate.id)) && <span>Conversation source</span>}
-                  {[...new Set(store.candidates.filter((candidate) => c.sourceIds?.includes(candidate.id)).map((candidate) => candidate.tool))].map((tool) => <span key={tool}>{tool}</span>)}
+                  {c.review && <span className="tag">{dueText(c.review.dueOn, localDate(new Date()))}</span>}
+                  <SourceMetadata candidates={store.candidates.filter((candidate) => c.sourceIds?.includes(candidate.id))} />
                 </span>
-                {c.review && (
-                  <span className="tag">{dueText(c.review.dueOn, localDate(new Date()))}</span>
-                )}
               </div>
             ))}
           </div>

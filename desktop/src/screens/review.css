@@ -1,10 +1,6 @@
-.sheet.studio-review {
-  max-width: 1400px;
-}
-
 .sheet.studio-review-state {
   align-items: flex-start;
-  max-width: 900px;
+  width: calc(100% - 80px);
   min-height: 0;
   margin: 42px auto;
   padding: 32px;
@@ -17,14 +13,12 @@
 .studio-review-state .review-week { width: 100%; padding: 20px; border-radius: 12px; background: var(--accent-soft); }
 .studio-review-state .review-week-row { font: 400 15px/1.6 var(--font-ui); }
 .studio-review-state .quiet-note { margin: 0; font: 400 14px/1.6 var(--font-ui); }
-.studio-review-state .steps { width: 100%; margin: 8px 0 0; gap: 16px; }
+.studio-review-state .steps { width: 100%; margin: 8px 0 0; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 .studio-review-state .steps li { padding: 20px; border: 0; border-radius: 12px; background: var(--accent-soft); font: 400 14px/1.6 var(--font-ui); }
 .studio-review-state .steps b { font: 700 18px/1.3 var(--font-ui); }
 .studio-review-state .step-num { font-weight: 700; }
 .studio-review-state .closing { align-items: flex-start; }
 .studio-review-state .fleuron { margin: 0; }
-@media (max-width: 700px) { .studio-review-state .steps { grid-template-columns: 1fr; } }
-
 .studio-review-header h1 {
   margin: 12px 0;
   font: 750 36px/1.15 var(--font-ui);
@@ -64,4 +58,4 @@
 .studio-review-tip { background: #dbf5e9; }
 .studio-review-tip p { margin: 14px 0 0; line-height: 1.55; }
 @media (prefers-color-scheme: dark) { .studio-review-tip { background: #203e39; } }
-@media (max-width: 900px) { .studio-review-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1050px) { .studio-review-layout { grid-template-columns: minmax(0, 1fr); } }

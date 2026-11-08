@@ -48,7 +48,7 @@ export default function SettingsScreen() {
     return (
       <div className="folio-scroll">
         <div className="sheet settings-sheet">
-          <div className="kicker">Settings</div>
+          <h1 className="display">Settings</h1>
           {error ? <p className="dek">{error}</p> : <p className="dek">Reading settings…</p>}
         </div>
       </div>
@@ -74,12 +74,18 @@ export default function SettingsScreen() {
   return (
     <div className="folio-scroll">
       <div className="sheet settings-sheet">
-        <div className="kicker">Settings</div>
+        <header>
+          <h1 className="display">Settings</h1>
+          <p className="dek">Configure generation and see what recap found on this machine.</p>
+        </header>
 
-        <div className="settings-group">
-          <div className="label">Inference CLI</div>
+        <section className="settings-group">
+          <h2 className="settings-section-title">Generation</h2>
+          <div className="settings-card settings-generation">
+          <label className="label" htmlFor="inference-cli">Inference CLI</label>
           <div className="settings-row">
             <select
+              id="inference-cli"
               value={settings.inference_cli}
               onChange={(e) =>
                 update({ inference_cli: e.target.value as Settings["inference_cli"] })
@@ -94,6 +100,7 @@ export default function SettingsScreen() {
             {settings.inference_cli === "custom" && (
               <input
                 type="text"
+                aria-label="Custom inference CLI path"
                 placeholder="/opt/tools/claude"
                 value={settings.custom_cli_path}
                 onChange={(e) => update({ custom_cli_path: e.target.value })}
@@ -105,10 +112,20 @@ export default function SettingsScreen() {
               ? "The custom path is passed to the engine as --inference and run claude-style (-p)."
               : "Passed to the engine as --inference."}
           </div>
-        </div>
+          <div className="settings-field">
+            <label className="label" htmlFor="generation-timeout">Generation timeout</label>
+            <div className="settings-row">
+              <input id="generation-timeout" type="number" min={60} max={900} step={30}
+                value={settings.timeout_sec}
+                onChange={(e) => update({ timeout_sec: Number(e.target.value) })} />
+              <span className="settings-hint">seconds, 60–900</span>
+            </div>
+          </div>
+          </div>
+        </section>
 
-        <div className="settings-group">
-          <div className="label">Detected on this machine</div>
+        <section className="settings-group">
+          <h2 className="settings-section-title">Detected on this machine</h2>
           <Harnesses detection={detection} sources={sources} sourcesError={sourcesError} />
           <div className="settings-hint">
             {detection === null
@@ -118,25 +135,12 @@ export default function SettingsScreen() {
                 : `No CLI for this setting on the app's PATH (checked ${detection.considered.join(", ")}). Generation will say so when it runs; scanning and the Signal Explorer still work.`}
             {sourcesError && ` Transcript check failed: ${sourcesError}`}
           </div>
-        </div>
+        </section>
 
-        <div className="settings-group">
-          <div className="label">Generation timeout</div>
-          <div className="settings-row">
-            <input
-              type="number"
-              min={60}
-              max={900}
-              step={30}
-              value={settings.timeout_sec}
-              onChange={(e) => update({ timeout_sec: Number(e.target.value) })}
-            />
-            <span className="settings-hint">seconds, 60–900</span>
-          </div>
-        </div>
-
-        <div className="settings-group">
-          <div className="label">Augmented PATH</div>
+        <section className="settings-group">
+          <h2 className="settings-section-title">Environment</h2>
+          <details className="settings-card settings-path">
+          <summary>Augmented PATH</summary>
           <p className="settings-hint">
             GUI-launched apps see a minimal PATH, so the app asks your login shell
             for its PATH{detection && !detection.login_shell ? " (it didn't answer this time)" : ""},
@@ -145,14 +149,10 @@ export default function SettingsScreen() {
             the inference CLI.
           </p>
           {detection && (
-            <ul className="path-dirs">
-              {detection.path_dirs.slice(0, 3).map((dir) => (
-                <li key={dir}>{dir}</li>
-              ))}
-              <li className="settings-hint">…then the inherited PATH</li>
-            </ul>
+            <pre className="path-dirs">{detection.path_dirs.join("\n")}{"\n…then the inherited PATH"}</pre>
           )}
-        </div>
+          </details>
+        </section>
 
         {error && <p className="settings-error">{error}</p>}
         <div className="closing">

@@ -49,7 +49,7 @@ function Entry({
             <p className={lead.kind === "error" ? "entry-lead error" : "entry-lead"}>{lead.text}</p>
             <div className="entry-who">
               {lead.kind === "error" ? "You pasted this into " : "You asked "}
-              {primary.tool} · {project(primary)} · {clock(primary.ts)}
+              {primary.tool} <span className="entry-time">· {clock(primary.ts)}</span> · {project(primary)}
             </div>
           </>
         )}
@@ -390,13 +390,14 @@ export default function DailyBrief({ store, onNavigate }: { store: StoreState | 
   return (
     <div className="folio-scroll">
       <div className="sheet">
+        <div className="brief-head"><div>
         <div className="kicker">{new Date(view.date + "T00:00").toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })} · Your daily brief</div>
         <h1 className="display">Follow your curiosity.</h1>
         <p className="dek">
           {count(entries.length, "idea", true)} from the last day's sessions, ranked by how much they looked like learning. About{" "}
           {count(readMinutes(entries), "minute")}, then you're done.
         </p>
-        <div className="brief-head">
+        </div>
           {store?.source === "live" && (
             <button className="text-button" onClick={generate}>
               Rewrite today's brief
