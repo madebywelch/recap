@@ -11,7 +11,7 @@ struct RenderWidgets {
         for (name, family, width) in [("small", WidgetFamily.systemSmall, 158.0), ("medium", WidgetFamily.systemMedium, 338.0)] {
             for (appearance, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
                 for (state, snapshot) in [("data", Snapshot(concept: "SQLite locking & WAL", dueCount: 3)), ("empty", Snapshot(concept: nil, dueCount: 0))] {
-                    let view = WidgetView(entry: Entry(date: Date(), snapshot: snapshot), family: family).snapshotView
+                    let view = WidgetView(entry: Entry(date: Date(), snapshot: snapshot), family: family, renderMode: true)
                         .environment(\.colorScheme, scheme)
                         .frame(width: width, height: 158)
                     let renderer = ImageRenderer(content: view)

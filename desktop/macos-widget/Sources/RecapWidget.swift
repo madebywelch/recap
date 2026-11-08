@@ -36,6 +36,7 @@ struct WidgetView: View {
     @Environment(\.colorScheme) private var colorScheme
     let entry: Entry
     let family: WidgetFamily
+    var renderMode = false
 
     private var dark: Bool { colorScheme == .dark }
     private var ink: Color { dark ? Color(red: 240/255, green: 240/255, blue: 247/255) : Color(red: 34/255, green: 36/255, blue: 56/255) }
@@ -50,15 +51,15 @@ struct WidgetView: View {
 
     var body: some View {
         Group {
-            if #available(macOS 14.0, *) {
+            if renderMode {
+                content.background(surface)
+            } else if #available(macOS 14.0, *) {
                 content.containerBackground(for: .widget) { surface }
             } else {
                 content.background(surface)
             }
         }
     }
-
-    var snapshotView: some View { content.background(surface) }
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {

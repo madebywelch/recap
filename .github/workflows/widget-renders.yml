@@ -20,6 +20,7 @@ jobs:
             -o "$RUNNER_TEMP/render-widgets"
           "$RUNNER_TEMP/render-widgets" "$RUNNER_TEMP/widget-renders"
           test "$(find "$RUNNER_TEMP/widget-renders" -name '*.png' | wc -l | tr -d ' ')" = 8
+          ! cmp -s "$RUNNER_TEMP/widget-renders/medium-light-data.png" "$RUNNER_TEMP/widget-renders/medium-dark-data.png"
       - uses: actions/upload-artifact@v4
         with:
           name: widget-renders
