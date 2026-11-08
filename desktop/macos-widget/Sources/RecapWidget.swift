@@ -1,12 +1,12 @@
 import SwiftUI
 import WidgetKit
 
-private struct Snapshot: Decodable {
+struct Snapshot: Decodable {
     let concept: String?
     let dueCount: Int
 }
 
-private struct Entry: TimelineEntry {
+struct Entry: TimelineEntry {
     let date: Date
     let snapshot: Snapshot?
 }
@@ -32,7 +32,7 @@ private struct Provider: TimelineProvider {
     }
 }
 
-private struct WidgetView: View {
+struct WidgetView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.widgetFamily) private var family
     let entry: Entry
@@ -58,6 +58,8 @@ private struct WidgetView: View {
         }
     }
 
+    var snapshotView: some View { content.background(surface) }
+
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -74,31 +76,30 @@ private struct WidgetView: View {
                 }
             }
             Spacer(minLength: 8)
+            VStack(alignment: .leading, spacing: 5) {
             if let snapshot = entry.snapshot, let concept = snapshot.concept, !concept.isEmpty {
                 if family == .systemSmall {
                     Text("\(snapshot.dueCount)").font(.system(size: 35, weight: .bold))
                     Text(snapshot.dueCount == 1 ? "idea to revisit" : "ideas to revisit")
                         .font(.system(size: 11))
-                    Spacer(minLength: 6)
-                    Text(concept).font(.system(size: 11, weight: .medium)).foregroundStyle(muted).lineLimit(2)
+                    Text(concept).font(.system(size: 11, weight: .medium)).foregroundStyle(muted).lineLimit(2).padding(.top, 4)
                 } else {
                     HStack(alignment: .top, spacing: 8) {
                         Circle().fill(dark ? Color(red: 139/255, green: 211/255, blue: 184/255) : Color(red: 66/255, green: 140/255, blue: 117/255)).frame(width: 8, height: 8).padding(.top, 5)
                         Text(concept).font(.system(size: 16, weight: .bold)).lineLimit(3)
                     }
-                    Spacer(minLength: 8)
-                    Text("\(snapshot.dueCount) due for review").font(.system(size: 11)).foregroundStyle(muted)
+                    Text("\(snapshot.dueCount) due for review").font(.system(size: 11)).foregroundStyle(muted).padding(.leading, 16)
                 }
             } else if let snapshot = entry.snapshot {
                 Text("No brief yet").font(.system(size: 17, weight: .bold))
                 Text("Open Recap to create your first brief.").font(.system(size: 11)).foregroundStyle(muted).padding(.top, 5)
-                Spacer(minLength: 0)
                 Text("\(snapshot.dueCount) due for review").font(.system(size: 11)).foregroundStyle(muted)
             } else {
                 Text("Open Recap").font(.system(size: 17, weight: .bold))
                 Text("Your brief and review count will appear here.").font(.system(size: 11)).foregroundStyle(muted).padding(.top, 5)
-                Spacer(minLength: 0)
             }
+            }
+            Spacer(minLength: 8)
         }
         .foregroundStyle(ink)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -106,6 +107,7 @@ private struct WidgetView: View {
     }
 }
 
+#if !WIDGET_RENDER
 @main
 struct RecapWidget: Widget {
     var body: some WidgetConfiguration {
@@ -117,3 +119,4 @@ struct RecapWidget: Widget {
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
+#endif
