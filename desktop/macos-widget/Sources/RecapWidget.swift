@@ -34,8 +34,8 @@ private struct Provider: TimelineProvider {
 
 struct WidgetView: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.widgetFamily) private var family
     let entry: Entry
+    let family: WidgetFamily
 
     private var dark: Bool { colorScheme == .dark }
     private var ink: Color { dark ? Color(red: 240/255, green: 240/255, blue: 247/255) : Color(red: 34/255, green: 36/255, blue: 56/255) }
@@ -112,11 +112,18 @@ struct WidgetView: View {
 struct RecapWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "RecapWidget", provider: Provider()) { entry in
-            WidgetView(entry: entry)
+            WidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Recap")
         .description("A concept and your review count.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
+}
+
+private struct WidgetEntryView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: Entry
+
+    var body: some View { WidgetView(entry: entry, family: family) }
 }
 #endif

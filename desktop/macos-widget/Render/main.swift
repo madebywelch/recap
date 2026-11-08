@@ -11,15 +11,14 @@ struct RenderWidgets {
         for (name, family, width) in [("small", WidgetFamily.systemSmall, 158.0), ("medium", WidgetFamily.systemMedium, 338.0)] {
             for (appearance, scheme) in [("light", ColorScheme.light), ("dark", ColorScheme.dark)] {
                 for (state, snapshot) in [("data", Snapshot(concept: "SQLite locking & WAL", dueCount: 3)), ("empty", Snapshot(concept: nil, dueCount: 0))] {
-                    let view = WidgetView(entry: Entry(date: Date(), snapshot: snapshot)).snapshotView
-                        .environment(\.widgetFamily, family)
+                    let view = WidgetView(entry: Entry(date: Date(), snapshot: snapshot), family: family).snapshotView
                         .environment(\.colorScheme, scheme)
                         .frame(width: width, height: 158)
                     let renderer = ImageRenderer(content: view)
                     renderer.scale = 2
                     guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
                           let bitmap = NSBitmapImageRep(data: tiff),
-                          let png = bitmap.representation(using: .png, properties: [:]) else {
+                          let png = bitmap.representation(using: NSBitmapImageRep.FileType.png, properties: [:]) else {
                         throw NSError(domain: "WidgetRender", code: 1)
                     }
                     try png.write(to: output.appendingPathComponent("\(name)-\(appearance)-\(state).png"))
