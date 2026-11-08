@@ -87,6 +87,19 @@ describe("useReview", () => {
     expect(loadCandidatesByIds).toHaveBeenCalledOnce();
   });
 
+  it("shows the conversation without diagnostic links for current and older sources", async () => {
+    const source: Candidate = { id: "first", sessionId: "session", ts: "2026-01-01T12:00:00Z", tool: "claude", cwd: "", userMessage: "A question", assistantExcerpt: "An answer", score: 3, userScore: 3, assistantBonus: 0, signals: [] };
+    vi.mocked(loadCandidatesByIds).mockResolvedValue([source]);
+    const { rerender } = render(<Review store={{ ...store, candidates: [source] }} onNavigate={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Show answer/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Show the exchange/ }));
+    expect(await screen.findByText("A question")).toBeTruthy();
+    expect(screen.queryByText(/Signal Explorer|scan window|score/i)).toBeNull();
+    rerender(<Review store={store} onNavigate={vi.fn()} />);
+    expect(screen.getByText("A question")).toBeTruthy();
+    expect(screen.queryByText(/Signal Explorer|scan window|score/i)).toBeNull();
+  });
+
   it("reports an initial load failure and retries the complete load", async () => {
     vi.mocked(loadDueConcepts).mockRejectedValueOnce(new Error("offline"));
     const { result } = renderHook(() => useReview(store));

@@ -18,16 +18,16 @@ const store: StoreState = {
 };
 const row: Concept = { id: 1, date: "2026-11-01", title: "A concept", body: "An explanation.", sourceIds: ["source"], review: null };
 const source: Candidate = {
-  id: "source", sessionId: "session", ts: "2026-11-01T12:00:00Z", tool: "claude", cwd: "/work/recap", userMessage: "Source question", assistantExcerpt: "Source answer", score: 3, userScore: 3, assistantBonus: 0, signals: [],
+  id: "source", sessionId: "session", ts: "2026-11-01T12:00:00Z", tool: "claude", cwd: "/work/recap", userMessage: "Source question", assistantExcerpt: "Source answer", score: 3, userScore: 3, assistantBonus: 0, signals: [{ name: "internal-signal", weight: 3, side: "user" }],
 };
 
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
 
 it("renders load retry, source retry and exchange disclosure", async () => {
-  vi.mocked(loadConcepts).mockRejectedValueOnce(new Error()).mockResolvedValue([row]);
-  vi.mocked(loadCandidatesByIds).mockRejectedValueOnce(new Error()).mockResolvedValue([source]);
-  vi.mocked(seedReview).mockRejectedValue(new Error());
+  vi.mocked(loadConcepts).mockRejectedValueOnce(new Error("private diagnostic")).mockResolvedValue([row]);
+  vi.mocked(loadCandidatesByIds).mockRejectedValueOnce(new Error("private diagnostic")).mockResolvedValue([source]);
+  vi.mocked(seedReview).mockRejectedValue(new Error("private diagnostic"));
   render(<ConceptLibrary store={store} onNavigate={vi.fn()} />);
 
   const loadAlert = await screen.findByRole("alert");
@@ -43,11 +43,13 @@ it("renders load retry, source retry and exchange disclosure", async () => {
   expect(screen.queryByText("Source question")).toBeNull();
   fireEvent.click(disclosure);
   expect(screen.getByText("Source question")).toBeTruthy();
+  expect(screen.queryByText(/score|internal-signal|Signal Explorer|scan window/i)).toBeNull();
   expect(screen.getByText("Source question").closest(".concept-source-card")?.parentElement?.className).toBe("concept-reader-layout");
   expect(screen.getByRole("button", { name: /Hide the exchange/ }).getAttribute("aria-expanded")).toBe("true");
 
   fireEvent.click(screen.getByRole("button", { name: "Add to review" }));
   expect((await screen.findByRole("alert")).textContent).toContain("Couldn't add this concept to review.");
+  expect(screen.queryByText(/private diagnostic/)).toBeNull();
 });
 
 it("shows the first sentence and known source metadata on the shelf, then the full body in the reader", async () => {

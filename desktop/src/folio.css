@@ -229,6 +229,7 @@ code {
 
 .entry {
   display: grid;
+  align-items: baseline;
   border-bottom: 1px solid var(--rule);
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 16px;
@@ -239,7 +240,6 @@ code {
 .entry-num {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
-  padding-top: 9px;
   color: #8e7bea;
   font: 750 25px/1 var(--font-ui);
 }
@@ -253,13 +253,16 @@ code {
 }
 
 .entry-lead.error {
-  display: inline-block;
+  display: block;
+  width: fit-content;
   font: 400 14px/1.5 var(--font-mono);
   color: var(--neg);
   background: var(--code-bg);
   padding: var(--s2) var(--s3);
   border-radius: var(--r-md);
 }
+
+.entry:has(.entry-lead.error) .entry-num { transform: translateY(5px); }
 
 .entry-lead.error::before,
 .entry-lead.error::after {
@@ -1416,9 +1419,8 @@ code {
 }
 
 .nav-badge {
-  position: absolute;
-  top: 6px;
-  right: 10px;
+  flex: none;
+  margin-left: auto;
   min-width: 18px;
   text-align: center;
   font: 600 10px/18px var(--font-ui);

@@ -25,6 +25,7 @@ export interface Settings {
   timeout_sec: number;
   /** First-run flag: the welcome sheet shows until dismissed. */
   onboarded: boolean;
+  show_engine_details: boolean;
 }
 
 /** One supported inference CLI as the app's PATH resolves it. */

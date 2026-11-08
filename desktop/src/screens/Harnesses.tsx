@@ -47,12 +47,12 @@ export default function Harnesses({
               )}
             </div>
             <div className="harness-line">
-              <span className="harness-kind">CLI</span>
+              <span className="harness-kind">Writing tool</span>
               {!cli ? (
                 <span className="harness-missing">checking…</span>
               ) : !cli.path ? (
                 <span className="harness-missing">
-                  <code>{tool}</code> not found on the app's PATH
+                  <code>{tool}</code> wasn't found
                 </span>
               ) : cli.runs ? (
                 <span>
@@ -60,8 +60,8 @@ export default function Harnesses({
                 </span>
               ) : (
                 <span className="harness-warn">
-                  found at <code>{cli.path}</code>, but <code>--version</code> failed — it may
-                  need a runtime (node) the app's PATH lacks
+                  found at <code>{cli.path}</code>, but couldn't run — it may need a runtime
+                  such as Node.js
                 </span>
               )}
             </div>

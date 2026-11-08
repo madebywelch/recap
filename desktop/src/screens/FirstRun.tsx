@@ -1,7 +1,6 @@
 import { useState } from "react";
-import type { SourcesResult } from "../fixtures";
+import { TOOLS, TOOL_LABELS, type SourcesResult } from "../fixtures";
 import { setSettings, type Detection, type Settings } from "../generation";
-import Harnesses from "./Harnesses";
 
 /**
  * First-run onboarding (docs/desktop-app-spec.md §First run): the four
@@ -32,8 +31,8 @@ export default function FirstRun({
     try {
       await setSettings({ ...settings, onboarded: true });
       onDone();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      setError("Couldn't save your settings. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -43,7 +42,7 @@ export default function FirstRun({
     <div className="first-run" role="dialog" aria-label="Welcome to recap">
       <div className="first-run-backdrop" />
       <div className="sheet">
-        <div className="kicker">recap desktop · first run</div>
+        <div className="kicker">Getting started</div>
         <h1 className="display">Welcome to recap.</h1>
         <p className="dek">A quick look at what this app does before it reads anything.</p>
 
@@ -51,40 +50,52 @@ export default function FirstRun({
           <div className="first-run-fact">
             <div className="label">What it reads</div>
             <p>
-              The session transcripts your AI CLIs already keep on this machine — Claude
-              Code, Codex and Pi sessions — plus your past morning-recap archives.
-              Nothing is fetched from anywhere else.
+              Your Claude Code, Codex and Pi conversation transcripts on this machine,
+              plus your past morning-recap archives.
             </p>
           </div>
           <div className="first-run-fact">
             <div className="label">Where the data goes</div>
             <p>
-              Nowhere. Transcripts never leave this machine: scanning, scoring, and the
-              concept library all run in the bundled engine, on your disk.
+              Recap reads your transcripts and keeps your library on this machine.
+              When you ask for a brief, it sends selected excerpts to your chosen AI tool,
+              which may send them to its provider.
             </p>
           </div>
           <div className="first-run-fact">
             <div className="label">What generation costs</div>
             <p>
-              Writing a brief runs your own inference CLI, so it spends your tokens, on
-              your account — and only when you ask for a brief.
+              Writing a brief uses your own AI tool and account, so it can use your
+              tokens. This happens only when you ask for a brief.
             </p>
           </div>
           <div className="first-run-fact">
             <div className="label">What it found</div>
-            <Harnesses detection={detection} sources={sources} />
+            <ul className="harnesses">
+              {TOOLS.map((tool) => {
+                const source = sources?.sources.find((item) => item.tool === tool);
+                return (
+                  <li key={tool} className="harness">
+                    <div className="harness-name">{TOOL_LABELS[tool]}</div>
+                    <div className="harness-line">
+                      {!source ? "Couldn't check for conversations" : source.found ? `${source.sessions} ${source.sessions === 1 ? "session" : "sessions"} found` : "No conversations found"}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
             {detection?.cli ? (
               <p>
-                <code>{detection.cli}</code> will write your briefs; pick another in
+                {detection.cli} will write your briefs. You can choose another tool in
                 Settings.
               </p>
-            ) : (
+            ) : detection ? (
               <p>
-                No inference CLI found yet. Reading, the library, and review all work
-                without one; writing a brief needs <code>claude</code>, <code>codex</code>{" "}
-                or <code>pi</code> on this machine, or a custom path in Settings.
+                No writing tool found yet. You can still read, use your library and
+                review. To write a brief, install Claude Code, Codex or Pi, or set a
+                custom tool path in Settings.
               </p>
-            )}
+            ) : <p>Couldn't check for a tool to write briefs. Check Settings to choose one.</p>}
           </div>
         </div>
 

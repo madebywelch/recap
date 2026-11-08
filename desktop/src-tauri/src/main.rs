@@ -48,6 +48,8 @@ struct Settings {
     timeout_sec: u32,
     #[serde(default)]
     onboarded: bool,
+    #[serde(default)]
+    show_engine_details: bool,
 }
 
 impl Default for Settings {
@@ -57,6 +59,7 @@ impl Default for Settings {
             custom_cli_path: String::new(),
             timeout_sec: 240,
             onboarded: false,
+            show_engine_details: false,
         }
     }
 }
@@ -962,19 +965,25 @@ mod tests {
     /// settings.json written before onboarding existed still parses.
     #[test]
     fn settings_parse_without_onboarded() {
-        let old = r#"{"inference_cli":"auto","custom_cli_path":"","timeout_sec":240}"#;
+        let old = r#"{"inference_cli":"custom","custom_cli_path":"/usr/local/bin/claude","timeout_sec":300}"#;
         let parsed: Settings = serde_json::from_str(old).unwrap();
         assert!(!parsed.onboarded);
+        assert!(!parsed.show_engine_details);
+        assert_eq!(parsed.inference_cli, "custom");
+        assert_eq!(parsed.custom_cli_path, "/usr/local/bin/claude");
+        assert_eq!(parsed.timeout_sec, 300);
         let round: Settings = serde_json::from_str(
             &serde_json::to_string(&Settings {
                 inference_cli: "auto".into(),
                 custom_cli_path: String::new(),
                 timeout_sec: 60,
                 onboarded: true,
+                show_engine_details: true,
             })
             .unwrap(),
         )
         .unwrap();
         assert!(round.onboarded);
+        assert!(round.show_engine_details);
     }
 }

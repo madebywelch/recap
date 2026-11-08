@@ -11,8 +11,8 @@ pnpm exec vite --config capture/vite.config.js --host 127.0.0.1
 CHROMIUM_PATH=/path/to/chromium node capture/capture.mjs
 ```
 
-The default executable is `/usr/local/bin/chromium`; set `CHROMIUM_PATH` for another installation. Output defaults to `capture-output/<size>/<theme>/<state>.png`. Set `CAPTURE_DIR` to an output directory and `CAPTURE_SIZES=1200x800` to limit sizes. The default captures all three requested sizes in both themes. Each capture waits for a state-specific visible label and fonts and fails on page errors. Loading states are deliberately held by the fixtures.
+The default executable is `/usr/local/bin/chromium`; set `CHROMIUM_PATH` for another installation. Output defaults to `capture-output/<size>/<theme>/<state>.png`. Set `CAPTURE_DIR` to an output directory, `CAPTURE_SIZES=1200x800` to limit sizes, or `CAPTURE_STATES=brief,settings` to select states. The default captures all three requested sizes in both themes. Each capture waits for a state-specific visible label and fonts and fails on page errors. Loading states are deliberately held by the fixtures.
 
-The `*-lower` captures scroll overflowing panels to their ends. The brief, reader and revealed review variants also expand the source exchange first, so long content below the initial viewport is included.
+The `*-lower` captures scroll overflowing panels to their ends. The brief, reader and revealed review variants also expand the source exchange first, so long content below the initial viewport is included. Diagnostic screenshots explicitly enable the Advanced setting; all other captures assert that its navigation entry is hidden by default. Onboarding and the startup error are also captured.
 
 For a contact sheet per size, install Pillow for Python and run `python3 capture/contact-sheet.py capture-output/1200x800 capture-output/1200x800.png` (repeat for the other size directories).

@@ -44,6 +44,8 @@ button {
   min-height: 0;
   padding: var(--s7) var(--s7) var(--s6);
   border-radius: var(--r-lg);
+  background: var(--sheet);
+  border: 1px solid var(--rule);
 }
 
 .first-run-facts {

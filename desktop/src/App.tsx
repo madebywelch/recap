@@ -37,7 +37,9 @@ export default function App() {
   const [focus, setFocus] = useState<string | null>(null);
   const [dueCount, setDueCount] = useState(0);
   const [welcome, setWelcome] = useState<Welcome>({ phase: "pending" });
+  const [showEngineDetails, setShowEngineDetails] = useState(false);
   const go: Navigate = (to, candidateId) => {
+    if (to === "signals" && !showEngineDetails) return;
     setScreen(to);
     setFocus(candidateId ?? null);
   };
@@ -63,6 +65,7 @@ export default function App() {
     (async () => {
       try {
         const settings = await getSettings();
+        if (alive) setShowEngineDetails(settings.show_engine_details);
         if (settings.onboarded || !alive) return;
         const [detection, sources] = await Promise.all([
           detectInference().catch(() => null),
@@ -107,7 +110,7 @@ export default function App() {
         </div>
         <div className="nav-label">Your learning</div>
         <nav className="nav" aria-label="Your learning">
-          {NAV.map((item) => (
+          {NAV.filter((item) => item.id !== "signals" || showEngineDetails).map((item) => (
             <button
               key={item.id}
               className={screen === item.id ? "nav-item active" : "nav-item"}
@@ -131,9 +134,14 @@ export default function App() {
         <header className="workspace-bar"><span>Your space <span aria-hidden> / </span> <strong>{NAV.find((item) => item.id === screen)?.label}</strong></span><span>{store?.source === "fixture" ? "Example data" : "All local, all yours"}</span></header>
         {screen === "brief" && <DailyBrief store={store} onNavigate={go} />}
         {screen === "library" && <ConceptLibrary store={store} onNavigate={go} />}
-        {screen === "signals" && <SignalExplorer store={store} focus={focus} onNavigate={go} />}
+        {screen === "signals" && showEngineDetails && <SignalExplorer store={store} focus={focus} onNavigate={go} />}
         {screen === "review" && <Review store={store} onNavigate={go} />}
-        {screen === "settings" && <SettingsScreen />}
+        {screen === "settings" && <SettingsScreen onSaved={(settings) => {
+          setShowEngineDetails(settings.show_engine_details);
+          if (!settings.show_engine_details) {
+            setScreen((current) => current === "signals" ? "brief" : current);
+          }
+        }} />}
       </main>
       {welcome.phase === "show" && (
         <FirstRun
