@@ -58,12 +58,38 @@ jobs:
             fi
           done
 
+      - name: Import the signing certificate for the widget
+        if: env.APPLE_CERTIFICATE != ''
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Build and sign the widget
+        working-directory: desktop/macos-widget
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/yonaskolb/XcodeGen/releases/download/2.42.0/xcodegen.zip -o "$RUNNER_TEMP/xcodegen.zip"
+          echo 'a760b4bf97460341316a2c00d8c87b2946c6c2729eb57e9a72abb3ef7bc0ef82  '"$RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
+          xcodebuild -project RecapWidget.xcodeproj -scheme RecapWidget -configuration Release \
+            -derivedDataPath build -arch arm64 CODE_SIGNING_ALLOWED=NO build
+          codesign --force --sign "${APPLE_SIGNING_IDENTITY:--}" --options runtime \
+            --entitlements RecapWidget.entitlements build/Build/Products/Release/RecapWidget.appex
+          mkdir -p build/Release
+          ditto build/Build/Products/Release/RecapWidget.appex build/Release/RecapWidget.appex
+          xcrun swiftc -target arm64-apple-macos13.0 Reload/main.swift -o build/Release/recap-widget-reload
+          codesign --force --sign "${APPLE_SIGNING_IDENTITY:--}" --options runtime build/Release/recap-widget-reload
+          codesign --verify --strict --verbose=2 build/Release/RecapWidget.appex
+          codesign --verify --strict --verbose=2 build/Release/recap-widget-reload
+
       - name: Build the app and its dmg
         working-directory: desktop
         run: |
           pnpm install --frozen-lockfile
           pnpm sidecar aarch64-apple-darwin
-          pnpm tauri build --target aarch64-apple-darwin
+          pnpm tauri build --target aarch64-apple-darwin --config macos-widget/tauri.widget.conf.json
 
       - name: Verify the bundle's code signature
         # The bundle is ad-hoc signed by default (signingIdentity "-"),
@@ -75,6 +101,12 @@ jobs:
         # must not fail the run.
         working-directory: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos
         run: |
+          test -d Recap.app/Contents/PlugIns/RecapWidget.appex
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Recap.app/Contents/PlugIns/RecapWidget.appex/Contents/Info.plist)" = com.madebywelch.recap.widget
+          codesign --verify --strict --verbose=2 Recap.app/Contents/PlugIns/RecapWidget.appex
+          codesign -d --entitlements :- Recap.app/Contents/PlugIns/RecapWidget.appex > "$RUNNER_TEMP/widget-entitlements.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$RUNNER_TEMP/widget-entitlements.plist")" = true
+          codesign --verify --strict --verbose=2 Recap.app/Contents/MacOS/recap-widget-reload
           codesign --verify --deep --strict --verbose=2 Recap.app
           spctl --assess --type execute -vv Recap.app || true
 

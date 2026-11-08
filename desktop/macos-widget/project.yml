@@ -1,0 +1,26 @@
+name: RecapWidget
+options:
+  deploymentTarget:
+    macOS: "13.0"
+targets:
+  RecapWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Sources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Recap
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.madebywelch.recap.widget
+        PRODUCT_NAME: RecapWidget
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_ENTITLEMENTS: RecapWidget.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES

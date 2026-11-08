@@ -8,3 +8,8 @@ src-tauri/gen/schemas/
 
 # sidecar binaries built locally; see src-tauri/binaries/README.md
 src-tauri/binaries/recap-*
+
+# generated WidgetKit project and products
+macos-widget/*.xcodeproj/
+macos-widget/Info.plist
+macos-widget/build/

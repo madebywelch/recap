@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "macOS": {
+      "files": {
+        "PlugIns/RecapWidget.appex": "../macos-widget/build/Release/RecapWidget.appex",
+        "MacOS/recap-widget-reload": "../macos-widget/build/Release/recap-widget-reload"
+      }
+    }
+  }
+}
